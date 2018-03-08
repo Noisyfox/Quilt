@@ -44,6 +44,7 @@ extern "C" {
 typedef struct uv_tls_s uv_tls_t;
 
 typedef void (*tls_rd_cb)(uv_tls_t* h, int nrd, uv_buf_t* dcrypted);
+typedef void (*tls_sd_cb)(uv_tls_t* h, int status);
 typedef void (*tls_close_cb)(uv_tls_t* h);
 typedef void (*tls_handshake_cb)(uv_tls_t* h, int status);
 

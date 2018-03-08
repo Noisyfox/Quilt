@@ -1,13 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "uv.h"
-#include "mbedtls/net.h"
-#include "mbedtls/ssl.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/debug.h"
-
 #include "uv_tls.h"
 
 #define STR_HELPER(x) #x
@@ -16,99 +9,8 @@
 #define HOST "www.noisyfox.io"
 #define PORT 443
 
-#define GET_REQUEST "GET / HTTP/1.1\r\nHost: " HOST "\r\n\r\n"
+#define GET_REQUEST "GET / HTTP/1.1\r\nHost: " HOST "\r\nConnection: close\r\n\r\n"
 
-//typedef struct {
-//	uv_write_t req;
-//	uv_buf_t buf;
-//} write_req_t;
-//
-//void on_close(uv_handle_t* peer) {
-//	free(peer);
-//	fprintf(stderr, "Closed ok!\n");
-//}
-//
-//void alloc_buffer(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
-//	*buf = uv_buf_init((char*)malloc(suggested_size), suggested_size);
-//}
-//
-//void receive_response(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
-//	if (nread < 0) {
-//		/* Error or EOF */
-//		uv_close((uv_handle_t*)stream, on_close);
-//	}
-//	else if (nread > 0) {
-//		fwrite(buf->base, sizeof(char), nread, stdout);
-//	}
-//
-//	if (buf->base)
-//		free(buf->base);
-//}
-//
-//void on_send(uv_write_t* req, int status) {
-//	write_req_t* rq = (write_req_t*)req;
-//
-//	uv_stream_t* tcp = req->handle;
-//
-//	free(rq->buf.base);
-//	free(rq);
-//
-//	if (status == 0) {
-//		fprintf(stderr, "Write ok!\n");
-//		uv_read_start(tcp, alloc_buffer, receive_response);
-//	}
-//	else {
-//		fprintf(stderr, "Write error!");
-//		fprintf(stderr, "uv_write error: %s - %s\n", uv_err_name(status), uv_strerror(status));
-//		if (!uv_is_closing((uv_handle_t*)tcp)) {
-//			uv_close((uv_handle_t*)tcp, on_close);
-//		}
-//	}
-//}
-//
-//void on_connect(uv_connect_t* req, int status) {
-//	fprintf(stderr, "Connected!");
-//
-//	uv_stream_t* tcp = req->handle;
-//
-//	uv_tls_t* clnt = (uv_tls_t*)req->handle->data;
-//
-//	//write_req_t *rq = (write_req_t*)malloc(sizeof(write_req_t));
-//	//char* request_data = _strdup(GET_REQUEST);
-//	//rq->buf = uv_buf_init(request_data, strlen(request_data));
-//	//uv_write(&rq->req, tcp, &rq->buf, 1, on_send);
-//}
-//
-//int main(){
-//	uv_loop_t *loop = uv_default_loop();
-//
-//	uv_tls_t *client = (uv_tls_t*)malloc(sizeof *client);
-//	if (uv_tls_init(loop, client) < 0) {
-//		free(client);
-//		client = 0;
-//		fprintf(stderr, "TLS setup error\n");
-//		return  -1;
-//	}
-//
-//	uv_connect_t req;
-//	uv_tls_connect(&req, client, HOST, PORT, on_connect);
-//
-//	uv_run(loop, UV_RUN_DEFAULT);
-//
-//	tls_engine_stop(&client->tls_eng);
-//	free(client);
-//	client = 0;
-//
-//	return 0;
-//}
-
-#define STR_HELPER(x) #x
-#define STR(x) STR_HELPER(x)
-
-#define HOST "www.noisyfox.io"
-#define PORT 443
-
-#define GET_REQUEST "GET / HTTP/1.1\r\nHost: " HOST "\r\n\r\n"
 
 typedef struct {
 	uv_write_t req;
@@ -125,57 +27,38 @@ void on_tls_close(uv_tls_t* h) {
 	fprintf(stderr, "TLS closed ok!\n");
 }
 
-//void alloc_buffer(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
-//	*buf = uv_buf_init((char*)malloc(suggested_size), suggested_size);
-//}
-//
-//void receive_response(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
-//	if (nread < 0) {
-//		/* Error or EOF */
-//		uv_close((uv_handle_t*)stream, on_close);
-//	}
-//	else if (nread > 0) {
-//		fwrite(buf->base, sizeof(char), nread, stdout);
-//	}
-//
-//	if (buf->base)
-//		free(buf->base);
-//}
-//
-//void on_send(uv_write_t* req, int status) {
-//	write_req_t* rq = (write_req_t*)req;
-//
-//	uv_stream_t* tcp = req->handle;
-//
-//	free(rq->buf.base);
-//	free(rq);
-//
-//	if (status == 0) {
-//		fprintf(stderr, "Write ok!\n");
+void receive_response(uv_tls_t* h, int nread, uv_buf_t* buf) {
+//	fprintf(stderr, "receive_response!");
+	if (nread < 0) {
+		/* Error or EOF */
+		uv_tls_close(h, on_tls_close);
+	}
+	else {
+		fwrite(buf->base, sizeof(char), nread, stdout);
+	}
+}
+
+void on_send(uv_write_t* req, int status) {
+	write_req_t* rq = (write_req_t*)req;
+
+	uv_stream_t* tcp = req->handle;
+
+	free(rq->buf.base);
+	free(rq);
+
+	if (status == 0) {
+		fprintf(stderr, "Write ok!\n");
 //		uv_read_start(tcp, alloc_buffer, receive_response);
-//	}
-//	else {
-//		fprintf(stderr, "Write error!");
-//		fprintf(stderr, "uv_write error: %s - %s\n", uv_err_name(status), uv_strerror(status));
-//		if (!uv_is_closing((uv_handle_t*)tcp)) {
-//			uv_close((uv_handle_t*)tcp, on_close);
-//		}
-//	}
-//}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	}
+	else {
+		fprintf(stderr, "Write error!");
+		fprintf(stderr, "uv_write error: %s - %s\n", uv_err_name(status), uv_strerror(status));
+		// TODO: somehow close the connection
+		//if (!uv_is_closing((uv_handle_t*)tcp)) {
+		//	uv_close((uv_handle_t*)tcp, on_close);
+		//}
+	}
+}
 
 void on_handshake(uv_tls_t* h, int status)
 {
@@ -187,12 +70,15 @@ void on_handshake(uv_tls_t* h, int status)
 	}
 
 	fprintf(stderr, "TLS handshake success!\n");
-	uv_tls_close(h, on_tls_close);
 
-	//write_req_t *rq = (write_req_t*)malloc(sizeof(write_req_t));
-	//char* request_data = _strdup(GET_REQUEST);
-	//rq->buf = uv_buf_init(request_data, strlen(request_data));
-	//uv_write(&rq->req, tcp, &rq->buf, 1, on_send);
+	uv_tls_read(h, receive_response);
+
+//	uv_tls_close(h, on_tls_close);
+
+	write_req_t *rq = (write_req_t*)malloc(sizeof(write_req_t));
+	char* request_data = _strdup(GET_REQUEST);
+	rq->buf = uv_buf_init(request_data, strlen(request_data));
+	uv_tls_write(&rq->req, h, &rq->buf, on_send);
 }
 
 void on_connect(uv_connect_t* req, int status) {

@@ -199,38 +199,50 @@ int uv_tls_write(uv_write_t *req,
     return rv;
 }
 
-size_t uv__tls_read(uv_tls_t *tls, uv_buf_t *dcrypted, int sz) {
+int uv__tls_read(uv_tls_t *tls) {
 
     if( 1 != uv__tls_handshake(tls)) {
         //recheck if handshake is complete now
         return STATE_HANDSHAKING;
     }
+
+	char buff_d[1024];
+	uv_buf_t dcrypted = { .base = (char*)&buff_d,.len = 0 };
 //
 //    //clean the slate
-    memset( dcrypted->base, 0, sz);
-    int rv = mbedtls_ssl_read(&tls->tls_eng.ssl, (unsigned char *)dcrypted->base, sz);
-    uv__tls_err_hdlr(tls, rv);
+    memset(dcrypted.base, 0, 1024);
+	int rv;
+	do {
+		rv = mbedtls_ssl_read(&tls->tls_eng.ssl, (unsigned char *)dcrypted.base, 1024);
+		uv__tls_err_hdlr(tls, rv);
 
-    dcrypted->len = (size_t) rv;
-    if( tls->rd_cb) {
-        tls->rd_cb(tls, rv, dcrypted);
-    }
+		switch (rv)
+		{
+		case MBEDTLS_ERR_SSL_WANT_WRITE:
+		case MBEDTLS_ERR_SSL_WANT_READ:
+			return rv;
+		}
+		dcrypted.len = (size_t)rv;
+		if (tls->rd_cb) {
+			tls->rd_cb(tls, rv, &dcrypted);
+		}
+	} while (rv > 0);
+
     return rv;
 }
 
 void on_tcp_read(uv_stream_t *tcp, ssize_t nread, const uv_buf_t *buf) {
-
     uv_tls_t *parent = uv_tls_get_client((uv_tcp_t*)tcp);
     assert( parent != NULL);
 
-    if( nread <= 0
+    if( nread < 0
     // ( parent->oprn_state & STATE_IO)
     ) {
         printf("on_tcp_read error: %s\n", uv_strerror(nread));
         if (parent->rd_cb) parent->rd_cb(parent, nread, (uv_buf_t*)buf);
     } else {
-        BIO_write( parent->tls_eng.app_bio_, buf->base, nread);
-        uv__tls_read(parent, (uv_buf_t*)buf, nread);
+		BIO_write(parent->tls_eng.app_bio_, buf->base, nread);
+        uv__tls_read(parent);
     }
     free(buf->base);
 }
