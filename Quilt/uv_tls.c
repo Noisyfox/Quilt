@@ -1,24 +1,27 @@
 #include "uv_tls.h"
 
-#define CONTAINER_OF(ptr, typex, member)  (typex *) ( (size_t)ptr- offsetof(typex, member) )   
-
 uv_stream_t *uv_tls_get_stream(uv_tls_t *tls) {
-    return (uv_stream_t *) &tls->socket_;
+    return (uv_stream_t *) tls->socket_;
 }
 
-int uv_tls_init(uv_loop_t *loop, uv_tls_t *strm) {
-    uv_tcp_init(loop, &strm->socket_);
-    strm->socket_.data = strm;
+uv_tls_t* uv_tls_get_client(uv_tcp_t* socket)
+{
+	return socket->data;
+}
 
-    tls_engine *ng = &(strm->tls_eng);
+int uv_tls_init(uv_tcp_t* connection, uv_tls_t* client) {
+	client->socket_ = connection;
+	client->socket_->data = client;
+
+    tls_engine *ng = &(client->tls_eng);
     tls_engine_init(ng);
 
     ng->ssl_bio_ = 0;
     ng->app_bio_ = 0;
-    strm->oprn_state = STATE_INIT;
-    strm->rd_cb = NULL;
-    strm->close_cb = NULL;
-    strm->on_tls_connect = NULL;
+	client->oprn_state = STATE_INIT;
+	client->rd_cb = NULL;
+	client->close_cb = NULL;
+	client->handshake_cb = NULL;
     return 0;
 }
 
@@ -74,7 +77,7 @@ int uv__tls_err_hdlr(uv_tls_t *k, const int err_code) {
 }
 
 void after_close(uv_handle_t *hdl) {
-    uv_tls_t *s = CONTAINER_OF((uv_tcp_t*)hdl, uv_tls_t, socket_);
+    uv_tls_t *s = uv_tls_get_client((uv_tcp_t*)hdl);
     if( s->close_cb) {
         s->close_cb(s);
         s = NULL;
@@ -149,10 +152,8 @@ int uv__tls_handshake(uv_tls_t *tls) {
             mbedtls_printf( "%s\n", vrfy_buf );
         }
 
-
-        if(tls->on_tls_connect) {
-            assert(tls->con_req);
-            tls->on_tls_connect(tls->con_req, status);
+        if(tls->handshake_cb) {
+            tls->handshake_cb(tls, status);
         }
     }
     return 0;
@@ -187,11 +188,11 @@ uv_buf_t encode_data(uv_tls_t *sessn, uv_buf_t *data2encode) {
 int uv_tls_write(uv_write_t *req,
                  uv_tls_t *client,
                  uv_buf_t *buf,
-                 uv_write_cb on_tls_write) {
+                 uv_write_cb cb) {
 
     const uv_buf_t data = encode_data(client, buf);
 
-    int rv = uv_write(req, uv_tls_get_stream(client), &data, 1, on_tls_write);
+    int rv = uv_write(req, uv_tls_get_stream(client), &data, 1, cb);
     if (data.base != NULL) {
         free(data.base);
     }
@@ -217,9 +218,9 @@ size_t uv__tls_read(uv_tls_t *tls, uv_buf_t *dcrypted, int sz) {
     return rv;
 }
 
-void on_tcp_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
+void on_tcp_read(uv_stream_t *tcp, ssize_t nread, const uv_buf_t *buf) {
 
-    uv_tls_t *parent = CONTAINER_OF(client, uv_tls_t, socket_);
+    uv_tls_t *parent = uv_tls_get_client((uv_tcp_t*)tcp);
     assert( parent != NULL);
 
     if( nread <= 0
@@ -236,22 +237,9 @@ void on_tcp_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
 
 //uv_alloc_cb is unused, but here for cosmetic reasons
 //Need improvement
-int uv_tls_read(uv_tls_t *sclient, tls_rd_cb on_read) {
-    sclient->rd_cb = on_read;
+int uv_tls_read(uv_tls_t* client, tls_rd_cb cb) {
+	client->rd_cb = cb;
     return 0;
-}
-
-
-void on_tcp_conn(uv_connect_t *c, int status) {
-    uv_tls_t *sclnt = c->handle->data;
-    assert(sclnt != 0);
-
-    if (status < 0) {
-        sclnt->on_tls_connect(c, status);
-    } else { //tcp connection established
-        uv__tls_handshake(sclnt);
-        uv_read_start((uv_stream_t *) &sclnt->socket_, uv__tls_alloc, on_tcp_read);
-    }
 }
 
 static int assume_role(tls_engine *tls) {
@@ -309,46 +297,36 @@ static int assume_role(tls_engine *tls) {
     return ERR_TLS_OK;
 }
 
+int uv_tls_handshake(uv_tls_t* h, const char *host, tls_handshake_cb cb)
+{
+	if(h->oprn_state != STATE_INIT)
+	{
+		return -1;
+	}
 
-int uv_tls_connect(
-        uv_connect_t *req,
-        uv_tls_t *hdl,
-        const char *host,
-        int port,
-        uv_connect_cb cb) {
+	tls_engine *tls_ngin = &(h->tls_eng);
+	int rv = assume_role(tls_ngin);
 
-    tls_engine *tls_ngin = &(hdl->tls_eng);
-    int rv = assume_role(tls_ngin);
-//
-    if( ( rv = mbedtls_ssl_set_hostname( &tls_ngin->ssl, host) ) != 0 )
-    {
-        mbedtls_printf( " failed\n  ! mbedtls_ssl_set_hostname returned %d\n\n", rv );
-        rv = ERR_TLS_ERROR;
-    }
+	if (rv)
+	{
+		return rv;
+	}
 
-    struct sockaddr_in addr_in;
-    struct addrinfo *req_addr;
+	if ((rv = mbedtls_ssl_set_hostname(&tls_ngin->ssl, host)) != 0)
+	{
+		mbedtls_printf(" failed\n  ! mbedtls_ssl_set_hostname returned %d\n\n", rv);
+		return ERR_TLS_ERROR;
+	}
 
-    int ret = getaddrinfo(host, NULL, NULL, &req_addr);
-    if (ret) {
-        //__log(LOG_VERBOSE, "get address info error");
-        return -1;
-    }
+	h->handshake_cb = cb;
 
-    memcpy(&addr_in, req_addr->ai_addr, sizeof(struct sockaddr_in));
-    addr_in.sin_port = htons(port);
-
-    freeaddrinfo(req_addr);
-
-
-    if (rv != ERR_TLS_OK) {
-        return rv;
-    }
-
-    hdl->on_tls_connect = cb;
-    hdl->con_req = req;
-
-    return uv_tcp_connect(req, &(hdl->socket_), (const struct sockaddr *)&addr_in, on_tcp_conn);
+	rv = uv__tls_handshake(h);
+	if(rv)
+	{
+		return ERR_TLS_ERROR;
+	}
+	
+	return uv_read_start((uv_stream_t *) h->socket_, uv__tls_alloc, on_tcp_read);
 }
 
 

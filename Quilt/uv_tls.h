@@ -45,18 +45,17 @@ typedef struct uv_tls_s uv_tls_t;
 
 typedef void (*tls_rd_cb)(uv_tls_t* h, int nrd, uv_buf_t* dcrypted);
 typedef void (*tls_close_cb)(uv_tls_t* h);
-typedef void (*tls_connect_cb)(uv_connect_t* req, int status);
+typedef void (*tls_handshake_cb)(uv_tls_t* h, int status);
 
 //Most used members are put first
 struct uv_tls_s {
-    uv_tcp_t              socket_; //handle that encapsulate the socket
+    uv_tcp_t*             socket_; //handle that encapsulate the socket
     tls_engine            tls_eng;  //the tls engine representation
     void                  *data;
     int                   oprn_state; // operational state
     tls_rd_cb             rd_cb;
     tls_close_cb          close_cb;
-    tls_connect_cb        on_tls_connect;
-    uv_connect_t          *con_req;
+	tls_handshake_cb      handshake_cb;
 };
 
 
@@ -65,19 +64,15 @@ struct uv_tls_s {
  Only uv_tls_init at max will return TLS engine related issue other will have
  libuv error
  */
-int uv_tls_init(uv_loop_t* loop, uv_tls_t* stream);
-int uv_tls_read(uv_tls_t* client, tls_rd_cb on_read);
-int uv_tls_write(uv_write_t* req, uv_tls_t *client, uv_buf_t* buf, uv_write_cb cb);
+int uv_tls_init(uv_tcp_t* connection, uv_tls_t* client);
+int uv_tls_read(uv_tls_t* client, tls_rd_cb cb);
+int uv_tls_write(uv_write_t* req, uv_tls_t* client, uv_buf_t* buf, uv_write_cb cb);
 
-int uv_tls_close(uv_tls_t* session, tls_close_cb close_cb);
+int uv_tls_close(uv_tls_t* session, tls_close_cb cb);
 //shutdown should go away
 int uv_tls_shutdown(uv_tls_t* session);
 
-int uv_tls_connect (uv_connect_t *req,
-                    uv_tls_t* hdl,
-                    const char *host,
-                    int port,
-                    uv_connect_cb cb);
+int uv_tls_handshake(uv_tls_t* h, const char *host, tls_handshake_cb cb);
 
 #ifdef __cplusplus
 }
