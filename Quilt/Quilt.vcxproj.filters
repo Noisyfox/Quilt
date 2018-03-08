@@ -39,4 +39,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="truststore.txt">
+      <Filter>源文件</Filter>
+    </Content>
+  </ItemGroup>
 </Project>
