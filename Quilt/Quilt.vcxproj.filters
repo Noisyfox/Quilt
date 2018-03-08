@@ -18,5 +18,25 @@
     <ClCompile Include="main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="bio.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="tls_engine.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="uv_tls.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="bio.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="tls_engine.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="uv_tls.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
