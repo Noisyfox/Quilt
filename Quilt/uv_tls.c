@@ -18,6 +18,7 @@ int uv_tls_init(uv_tcp_t* connection, uv_tls_t* client) {
 
     ng->ssl_bio_ = 0;
     ng->app_bio_ = 0;
+	client->data = NULL;
 	client->oprn_state = STATE_INIT;
 	client->rd_cb = NULL;
 	client->close_cb = NULL;
