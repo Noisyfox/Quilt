@@ -229,8 +229,6 @@ void on_handshake(uv_tls_t* h, int status)
 }
 
 void on_connect(uv_connect_t* req, int status) {
-	fprintf(stderr, "Connected!");
-
 	uv_stream_t* tcp = req->handle;
 
 	free(req);
@@ -241,6 +239,8 @@ void on_connect(uv_connect_t* req, int status) {
 		uv_close((uv_handle_t*)tcp, on_close);
 		return;
 	}
+
+	fprintf(stderr, "Connected!");
 
 	uv_tls_t *client = (uv_tls_t*)malloc(sizeof *client);
 	if (uv_tls_init((uv_tcp_t*)tcp, client)) {

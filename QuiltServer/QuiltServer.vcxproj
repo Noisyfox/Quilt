@@ -152,6 +152,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="simple_buffer.c" />
+    <ClCompile Include="tls.c" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\libuv\libuv.vcxproj">
@@ -160,6 +162,10 @@
     <ProjectReference Include="..\mbedtls\visualc\VS2010\mbedTLS.vcxproj">
       <Project>{46cf2d25-6a36-4189-b59c-e4815388e554}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="simple_buffer.h" />
+    <ClInclude Include="tls.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
