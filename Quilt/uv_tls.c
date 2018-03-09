@@ -157,7 +157,7 @@ int uv__tls_handshake(uv_tls_t *tls) {
             tls->handshake_cb(tls, status);
         }
     }
-    return 0;
+    return rv;
 }
 
 int uv_tls_shutdown(uv_tls_t *session) {
@@ -327,8 +327,9 @@ int uv_tls_handshake(uv_tls_t* h, const char *host, tls_handshake_cb cb)
 	h->handshake_cb = cb;
 
 	rv = uv__tls_handshake(h);
-	if(rv)
+	if(rv && (rv != MBEDTLS_ERR_SSL_WANT_WRITE && rv != MBEDTLS_ERR_SSL_WANT_READ))
 	{
+		mbedtls_printf(" failed\n  ! uv__tls_handshake returned %d\n\n", rv);
 		return ERR_TLS_ERROR;
 	}
 	
