@@ -22,6 +22,7 @@ int uv_tls_init(uv_tcp_t* connection, uv_tls_t* client) {
 	client->rd_cb = NULL;
 	client->close_cb = NULL;
 	client->handshake_cb = NULL;
+	client->random_cb = NULL;
     return 0;
 }
 
@@ -254,27 +255,22 @@ int uv_tls_read(uv_tls_t* client, tls_rd_cb cb) {
     return 0;
 }
 
-static int assume_role(tls_engine *tls) {
+static int uv_tls_random(void *p_rng, unsigned char *output, size_t output_len)
+{
+	uv_tls_t* h = p_rng;
+
+	if(h->random_cb)
+	{
+		return h->random_cb(h, output, output_len);
+	}
+
+	return mbedtls_ctr_drbg_random(&h->tls_eng.ctr_drbg, output, output_len);
+}
+
+static int assume_role(uv_tls_t* h) {
+	tls_engine* tls = &h->tls_eng;
     mbedtls_ssl_context ctx = tls->ssl;
 
-//    tls_ngin->ssl = SSL_new(tls_ngin->ctx);
-//    if(!tls_ngin->ssl) {
-//        return ERR_TLS_ERROR;
-//    }
-//
-//    if( endpt_role == 1) {
-//        SSL_set_accept_state(tls_ngin->ssl);
-//    }
-//    else {
-//        //set in client mode
-//        SSL_set_connect_state(tls_ngin->ssl);
-//    }
-//
-//    //use default buf size for now.
-//    if( !BIO_new_bio_pair(&(tls_ngin->ssl_bio_), 0, &(tls_ngin->app_bio_), 0)) {
-//        return ERR_TLS_ERROR;
-//    }
-//    SSL_set_bio(tls_ngin->ssl, tls_ngin->ssl_bio_, tls_ngin->ssl_bio_);
     int ret;
     mbedtls_printf("  . Setting up the SSL/TLS structure...\n");
 
@@ -287,11 +283,9 @@ static int assume_role(tls_engine *tls) {
 
     mbedtls_printf(" ok\n");
 
-    /* OPTIONAL is not optimal for security,
-     * but makes interop easier in this simplified example */
-    mbedtls_ssl_conf_authmode(&tls->conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
+    mbedtls_ssl_conf_authmode(&tls->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
     mbedtls_ssl_conf_ca_chain(&tls->conf, &tls->cacert, NULL);
-    mbedtls_ssl_conf_rng(&tls->conf, mbedtls_ctr_drbg_random, &tls->ctr_drbg);
+    mbedtls_ssl_conf_rng(&tls->conf, uv_tls_random, h);
 //    mbedtls_ssl_conf_dbg( &tls->conf, my_debug, stdout );
 
     if ((ret = mbedtls_ssl_setup(&tls->ssl, &tls->conf)) != 0) {
@@ -316,14 +310,14 @@ int uv_tls_handshake(uv_tls_t* h, const char *host, tls_handshake_cb cb)
 		return -1;
 	}
 
-	tls_engine *tls_ngin = &(h->tls_eng);
-	int rv = assume_role(tls_ngin);
+	int rv = assume_role(h);
 
 	if (rv)
 	{
 		return rv;
 	}
 
+	tls_engine *tls_ngin = &h->tls_eng;
 	if ((rv = mbedtls_ssl_set_hostname(&tls_ngin->ssl, host)) != 0)
 	{
 		mbedtls_printf(" failed\n  ! mbedtls_ssl_set_hostname returned %d\n\n", rv);

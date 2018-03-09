@@ -47,6 +47,7 @@ typedef void (*tls_rd_cb)(uv_tls_t* h, int nrd, uv_buf_t* dcrypted);
 typedef void (*tls_sd_cb)(uv_tls_t* h, int status);
 typedef void (*tls_close_cb)(uv_tls_t* h);
 typedef void (*tls_handshake_cb)(uv_tls_t* h, int status);
+typedef int(*tls_random_cb)(uv_tls_t* h, unsigned char *output, size_t output_len);
 
 //Most used members are put first
 struct uv_tls_s {
@@ -57,6 +58,7 @@ struct uv_tls_s {
     tls_rd_cb             rd_cb;
     tls_close_cb          close_cb;
 	tls_handshake_cb      handshake_cb;
+	tls_random_cb         random_cb;
 };
 
 
