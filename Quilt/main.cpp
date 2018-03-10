@@ -36,7 +36,11 @@ static int quilt_fill_random(quilt_ctx* ctx, unsigned char *output)
 	}
 	mbedtls_time_t t = mbedtls_time(NULL);
 
-	return calculate_random(output, PSK, (long)(t / 60 / 60), output + 16);
+	rv = calculate_random(output, PSK, (long)(t / 60 / 60), output + 16);
+
+	Q_DEBUG_BUF("Client random generated", output, 32);
+
+	return rv;
 }
 
 static int quilt_random(uv_tls_t* h, unsigned char *output, size_t output_len)

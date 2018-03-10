@@ -72,3 +72,54 @@ int calculate_random(const unsigned char iv[16], const char* psk, const long tim
 	rv = doAES(MBEDTLS_AES_ENCRYPT, iv, key, rest, 16, output);
 	return rv;
 }
+
+#define DEBUG_BUF_SIZE      512
+
+void debug_print_buf(const char *file, int line, const char *text, const unsigned char *buf, size_t len)
+{
+	char str[DEBUG_BUF_SIZE];
+	char txt[17];
+	size_t i, idx = 0;
+
+	snprintf(str + idx, sizeof(str) - idx, "dumping '%s' (%u bytes)\n",
+		text, (unsigned int)len);
+
+	fprintf(stderr, str);
+
+	idx = 0;
+	memset(txt, 0, sizeof(txt));
+	for (i = 0; i < len; i++)
+	{
+		if (i >= 4096)
+			break;
+
+		if (i % 16 == 0)
+		{
+			if (i > 0)
+			{
+				snprintf(str + idx, sizeof(str) - idx, "  %s\n", txt);
+				fprintf(stderr, str);
+
+				idx = 0;
+				memset(txt, 0, sizeof(txt));
+			}
+
+			idx += snprintf(str + idx, sizeof(str) - idx, "%04x: ",
+				(unsigned int)i);
+
+		}
+
+		idx += snprintf(str + idx, sizeof(str) - idx, " %02x",
+			(unsigned int)buf[i]);
+		txt[i % 16] = (buf[i] > 31 && buf[i] < 127) ? buf[i] : '.';
+	}
+
+	if (len > 0)
+	{
+		for ( /* i = i */; i % 16 != 0; i++)
+			idx += snprintf(str + idx, sizeof(str) - idx, "   ");
+
+		snprintf(str + idx, sizeof(str) - idx, "  %s\n", txt);
+		fprintf(stderr, str);
+	}
+}

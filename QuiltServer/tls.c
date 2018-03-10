@@ -100,7 +100,7 @@ int tls_extract_handshake(tls_record* record, size_t offset, tls_handshake* out,
 	out->buf = b;
 	out->buf_hdr = b;
 	out->buf_len = b + 1;
-	out->buf_msg = record->buf_len + 3;
+	out->buf_msg = out->buf_len + 3;
 
 	if (next_offset) {
 		*next_offset = offset + 4 + msg_len;

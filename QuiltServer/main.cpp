@@ -164,6 +164,8 @@ void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 
 					// Read random
 					unsigned char* random = handshake.buf_msg + 2;
+					Q_DEBUG_BUF("Client random received", random, 32);
+
 					// Check random
 					long t = mbedtls_time(NULL) / 60 / 60;
 					int is_secret_random = FALSE;
@@ -171,10 +173,11 @@ void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 					unsigned char target_random[16];
 					for (int i = -1; i <= 1; i++)
 					{
-						rv |= calculate_random(random, PSK, t + i, target_random);
-						is_secret_random |= mbedtls_ssl_safer_memcmp(target_random, random + 16, 16);
+						rv |= calculate_random(random, PSK, t + i, target_random) != 0;
+						is_secret_random |= mbedtls_ssl_safer_memcmp(target_random, random + 16, 16) == 0;
 					}
-					if (rv || !is_secret_random)
+					rv = rv | (!is_secret_random);
+					if (rv)
 					{
 						fprintf(stderr, "Client random check failed! Enter mock mode.\n");
 						mark_tls_failed(ctx);
