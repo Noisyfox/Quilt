@@ -8,7 +8,7 @@
 #define STR(x) STR_HELPER(x)
 
 #define HOST "www.noisyfox.io"
-#define PORT 443
+#define PORT 8043
 
 #define GET_REQUEST "GET / HTTP/1.1\r\nHost: " HOST "\r\nConnection: close\r\n\r\n"
 
