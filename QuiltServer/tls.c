@@ -18,11 +18,32 @@ int tls_peek_next_record(buffer* buf, tls_record* out)
 	{
 		return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
 	}
+	int msg_type = b[0];
+
+	if (msg_type != MBEDTLS_SSL_MSG_HANDSHAKE &&
+		msg_type != MBEDTLS_SSL_MSG_ALERT &&
+		msg_type != MBEDTLS_SSL_MSG_CHANGE_CIPHER_SPEC &&
+		msg_type != MBEDTLS_SSL_MSG_APPLICATION_DATA)
+	{
+		return MBEDTLS_ERR_SSL_INVALID_RECORD;
+	}
 
 	unsigned char * buf_len = b + 3;
 	size_t msg_len = (buf_len[0] << 8) | buf_len[1];
 
-	if (msg_len > MBEDTLS_SSL_MAX_CONTENT_LEN)
+	// For application data, the message length can somehow exceeds the limitation.
+	if (msg_type != MBEDTLS_SSL_MSG_APPLICATION_DATA)
+	{
+		/*
+		* TLS encrypted messages can have up to 256 bytes of padding
+		*/
+		if(minor >= MBEDTLS_SSL_MINOR_VERSION_1
+			&& msg_len > MBEDTLS_SSL_MAX_CONTENT_LEN + 256 + 16)
+		{
+			return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+		}
+	}
+	else if(msg_len > MBEDTLS_SSL_MAX_CONTENT_LEN)
 	{
 		return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
 	}
@@ -33,7 +54,7 @@ int tls_peek_next_record(buffer* buf, tls_record* out)
 		return MBEDTLS_ERR_SSL_WANT_READ;
 	}
 
-	out->msg_type = b[0];
+	out->msg_type = msg_type;
 	out->major_ver = major;
 	out->minor_ver = minor;
 	out->msg_len = msg_len;
