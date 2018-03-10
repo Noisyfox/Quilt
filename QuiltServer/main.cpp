@@ -12,6 +12,7 @@
 #define STR(x) STR_HELPER(x)
 
 #define HOST "www.noisyfox.io"
+#define HOST_IP "172.104.122.122"
 #define PORT 443
 
 #define PSK "this is a key!"
@@ -599,7 +600,7 @@ void on_new_connection(uv_stream_t *server, int status) {
 		hints.ai_protocol = IPPROTO_TCP;
 		hints.ai_flags = 0;
 
-		if (uv_getaddrinfo(server->loop, resolver, on_mock_resolved, HOST, STR(PORT), &hints))
+		if (uv_getaddrinfo(server->loop, resolver, on_mock_resolved, HOST_IP, STR(PORT), &hints))
 		{
 			free(resolver);
 			close_client(ctx);

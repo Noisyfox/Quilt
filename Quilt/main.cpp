@@ -243,7 +243,7 @@ int main() {
 
 	uv_getaddrinfo_t resolver;
 	fprintf(stderr, HOST " is... ");
-	int r = uv_getaddrinfo(loop, &resolver, on_resolved, HOST, STR(PORT), &hints);
+	int r = uv_getaddrinfo(loop, &resolver, on_resolved, "127.0.0.1", STR(PORT), &hints);
 
 	if (r) {
 		fprintf(stderr, "getaddrinfo call error %s\n", uv_err_name(r));
