@@ -75,9 +75,9 @@ size_t buffer_append(buffer* buf, const unsigned char* input, size_t ilen)
 	{
 		size_t shortage = ilen - remain;
 		shortage *= 2;
-		if(shortage < 1024)
+		if(shortage < 512)
 		{
-			shortage = 1024;
+			shortage = 512;
 		}
 		size_t new_cap = cap + shortage;
 		unsigned char* new_data = (unsigned char*)malloc(new_cap);
