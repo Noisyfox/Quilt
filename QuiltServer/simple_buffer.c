@@ -25,7 +25,7 @@ size_t buffer_available(buffer* buf)
 
 unsigned char* buffer_raw_header(buffer* buf, size_t required_len)
 {
-	if(required_len < buffer_available((buf)))
+	if(required_len > buffer_available(buf))
 	{
 		return NULL;
 	}

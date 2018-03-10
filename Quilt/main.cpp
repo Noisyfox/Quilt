@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "mbedtls/aes.h"
-#include "mbedtls/sha256.h"
+#include "utils.h"
 #include "uv_tls.h"
 
 #define STR_HELPER(x) #x
@@ -27,78 +26,17 @@ typedef struct
 	quilt_random_state rnd_state;
 } quilt_ctx;
 
-static int doSHA256(const unsigned char *input, size_t ilen, unsigned char output[32])
-{
-	mbedtls_sha256_context sha;
-	mbedtls_sha256_init(&sha);
-
-	int rv = mbedtls_sha256_starts_ret(&sha, 0);
-	if(rv)
-	{
-		goto finish;
-	}
-	rv = mbedtls_sha256_update_ret(&sha, input, ilen);
-	if (rv)
-	{
-		goto finish;
-	}
-	rv = mbedtls_sha256_finish_ret(&sha, output);
-
-finish:
-	mbedtls_sha256_free(&sha);
-	return rv;
-}
-
-static int doAES(int mode, const unsigned char iv[16], const unsigned char key[32], const unsigned char *input, size_t ilen, unsigned char *output)
-{
-	size_t iv_off = 0;
-	unsigned char _iv[16];
-	memcpy(_iv, iv, 16);
-
-	mbedtls_aes_context aes;
-	mbedtls_aes_init(&aes);
-
-	int rv = mbedtls_aes_setkey_enc(&aes, key, 256);
-	if (rv)
-	{
-		goto finish;
-	}
-	rv = mbedtls_aes_crypt_cfb128(&aes, mode, ilen, &iv_off, _iv, input, output);
-
-finish:
-	mbedtls_aes_free(&aes);
-	return rv;
-}
-
-// Generate pseudo-random based on https://github.com/cbeuw/GoQuiet/wiki/GoQuiet
 static int quilt_fill_random(quilt_ctx* ctx, unsigned char *output)
 {
-	unsigned char key[32];
-	unsigned char rest[32];
-	char goal[1024];
-
 	int rv;
-
-	if ((rv = doSHA256((const unsigned char *)PSK, strlen(PSK), key)))
-	{
-		return rv;
-	}
-
 	// Generate iv
 	if ((rv = mbedtls_ctr_drbg_random(&ctx->client->tls_eng.ctr_drbg, output, 16)))
 	{
 		return rv;
 	}
-	// Generate goal
 	mbedtls_time_t t = mbedtls_time(NULL);
-	sprintf_s(goal, "%ld%s", (long)(t / 60 / 60), PSK); // Here we allow 1 hour difference
-	if ((rv = doSHA256((const unsigned char *)goal, strlen(goal), rest)))
-	{
-		return rv;
-	}
 
-	rv = doAES(MBEDTLS_AES_ENCRYPT, output, key, rest, 16, output + 16);
-	return rv;
+	return calculate_random(output, PSK, (long)(t / 60 / 60), output + 16);
 }
 
 static int quilt_random(uv_tls_t* h, unsigned char *output, size_t output_len)

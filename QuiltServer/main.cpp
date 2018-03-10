@@ -3,6 +3,8 @@
 #include "uv.h"
 #include "tls.h"
 #include "mbedtls/ssl.h"
+#include "mbedtls/ssl_internal.h"
+#include "utils.h"
 
 #define DEFAULT_BACKLOG 10
 
@@ -131,42 +133,75 @@ void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 		if (ctx->tls_state != Q_TLS_FINISH) {
 			if (buffer_append(&ctx->client_buffer, (unsigned char*)rq->buf.base, nread) != nread)
 			{
-				fprintf(stderr, "Client data parse error! buffer_append failed. Enter mock mode.");
+				fprintf(stderr, "Client data parse error! buffer_append failed. Enter mock mode.\n");
 				mark_tls_failed(ctx);
 				goto bridge;
 			}
 			// Parse tls
 			tls_record record;
 			int rs = tls_peek_next_record(&ctx->client_buffer, &record);
-			if(rs == 0)
+			if (rs == 0)
 			{
-				if(ctx->tls_state == Q_TLS_INIT)
+				if (ctx->tls_state == Q_TLS_INIT)
 				{
 					tls_handshake handshake;
-					if(tls_extract_handshake(&record, 0, &handshake, NULL))
+					if (tls_extract_handshake(&record, 0, &handshake, NULL))
 					{
-						fprintf(stderr, "Client data parse error! tls_extract_handshake failed. Enter mock mode.");
+						fprintf(stderr, "Client data parse error! tls_extract_handshake failed. Enter mock mode.\n");
 						mark_tls_failed(ctx);
 
 						goto bridge;
 					}
 
 					// Should be client hello record
-					if(handshake.msg_type != MBEDTLS_SSL_HS_CLIENT_HELLO)
+					if (handshake.msg_type != MBEDTLS_SSL_HS_CLIENT_HELLO || handshake.msg_len < 38)
 					{
-						fprintf(stderr, "Client data parse error! tls_extract_handshake failed. Enter mock mode.");
+						fprintf(stderr, "Client data parse error! Client hello parse failed. Enter mock mode.\n");
 						mark_tls_failed(ctx);
 
 						goto bridge;
 					}
 
-					// TODO: parse client hello
+					// Read random
+					unsigned char* random = handshake.buf_msg + 2;
+					// Check random
+					long t = mbedtls_time(NULL) / 60 / 60;
+					int is_secret_random = FALSE;
+					int rv = 0;
+					unsigned char target_random[16];
+					for (int i = -1; i <= 1; i++)
+					{
+						rv |= calculate_random(random, PSK, t + i, target_random);
+						is_secret_random |= mbedtls_ssl_safer_memcmp(target_random, random + 16, 16);
+					}
+					if (rv || !is_secret_random)
+					{
+						fprintf(stderr, "Client random check failed! Enter mock mode.\n");
+						mark_tls_failed(ctx);
+
+						goto bridge;
+					}
+					// Random check pass! For now it looks good.
+					ctx->tls_state = Q_TLS_CLIENT_HELLO;
+					ctx->is_comrade = true;
+					fprintf(stderr, "Client random check pass!\n");
+				}
+				else if (ctx->tls_state == Q_TLS_CLIENT_HELLO)
+				{
+					// Wait until client send application data
+				}
+
+				if (tls_pop_record(&ctx->client_buffer, &record))
+				{
+					mark_tls_failed(ctx);
+
+					goto bridge;
 				}
 			}
 			else if (rs != MBEDTLS_ERR_SSL_WANT_READ)
 			{
 				// Error
-				fprintf(stderr, "Client data parse error! tls_peek_next_record failed. Enter mock mode.");
+				fprintf(stderr, "Client data parse error! tls_peek_next_record failed. Enter mock mode.\n");
 				mark_tls_failed(ctx);
 
 				goto bridge;
@@ -175,7 +210,7 @@ void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 		else
 		{
 			// Process & proxy
-			return;
+			//return;
 		}
 
 bridge:
