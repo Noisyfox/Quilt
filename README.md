@@ -9,7 +9,7 @@ This is a POC project. Currently only build on windows with VS 2017.
 4. Build the solution.
 
 ## Run
-1. Add ```127.0.0.1 www.noisyfox.io``` to your hosts file.
+1. Add ```127.0.0.1 www.noisyfox.io``` to your hosts file. Don't forget to remove this line once you've done otherwise you may miss tons of amazing things from my site and you and I will both be sad about that :worried:.
 2. Run ```QuiltServer.exe```.
 3. Run ```Quilt.exe``` and see the output in ```QuiltServer```.
 4. Use chrome or any other web browser to visit [https://www.noisyfox.io:8043](https://www.noisyfox.io:8043) and see the output in ```QuiltServer```.
