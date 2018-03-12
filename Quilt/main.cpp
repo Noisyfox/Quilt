@@ -5,8 +5,7 @@
 #include "uv_tls.h"
 #include "tls.h"
 
-#define STR_HELPER(x) #x
-#define STR(x) STR_HELPER(x)
+#define LISTEN_PORT 8042
 
 #define HOST "www.noisyfox.io"
 #define PORT 8043
@@ -23,8 +22,11 @@ enum quilt_random_state {
 
 typedef struct
 {
-	uv_tls_t* client;
-	uv_tcp_t* connection;
+	uv_tcp_t* client_connection;
+
+	uv_tls_t* server_connection_tls;
+	uv_tcp_t* server_connection;
+
 	quilt_random_state rnd_state;
 
 	buffer buf_read;
@@ -38,8 +40,7 @@ static void alloc_buffer(uv_handle_t *handle, size_t size, uv_buf_t *buf) {
 
 static void context_init(quilt_ctx* ctx)
 {
-	ctx->client = NULL;
-	ctx->connection = NULL;
+	memset(ctx, 0, sizeof(quilt_ctx));
 	ctx->rnd_state = Q_RND_INIT;
 	
 	buffer_init(&ctx->buf_read);
@@ -47,16 +48,38 @@ static void context_init(quilt_ctx* ctx)
 
 static void context_free(quilt_ctx* ctx)
 {
-	FREE(ctx->client);
-	FREE(ctx->connection);
+	FREE(ctx->client_connection);
+	FREE(ctx->server_connection);
 	buffer_free(&ctx->buf_read);
+}
+
+void on_close(uv_ext_close_t* req) {
+	quilt_ctx* ctx = (quilt_ctx*)req->data;
+	free(req->handles);
+	free(req);
+	context_free(ctx);
+	free(ctx);
+	fprintf(stderr, "Closed ok!\n");
+}
+
+static void context_close(quilt_ctx* ctx)
+{
+	uv_ext_close_t* close_req = (uv_ext_close_t*)malloc(sizeof(uv_ext_close_t));
+	close_req->data = ctx;
+	close_req->handles = (uv_handle_t**)malloc(sizeof(uv_handle_t*) * 2);
+	
+	close_req->handles[0] = (uv_handle_t*)ctx->client_connection;
+	close_req->handles[1] = (uv_handle_t*)ctx->server_connection;
+	close_req->handle_count = close_req->handles[1] == NULL ? 1 : 2;
+
+	uv_ext_close(close_req, on_close);
 }
 
 static int quilt_fill_random(quilt_ctx* ctx, unsigned char *output)
 {
 	int rv;
 	// Generate iv
-	if ((rv = mbedtls_ctr_drbg_random(&ctx->client->tls_eng.ctr_drbg, output, 16)))
+	if ((rv = mbedtls_ctr_drbg_random(&ctx->server_connection_tls->tls_eng.ctr_drbg, output, 16)))
 	{
 		return rv;
 	}
@@ -129,42 +152,25 @@ typedef struct {
 	uv_buf_t buf;
 } write_req_t;
 
-void on_close(uv_handle_t* peer) {
-	quilt_ctx* ctx = (quilt_ctx*)peer->data;
-	if (ctx) {
-		context_free(ctx);
-		free(ctx);
-	}
-	else
-	{
-		free(peer);
-	}
-	fprintf(stderr, "Closed ok!\n");
-}
-
-void on_tls_close(uv_tls_t* h) {
-	quilt_ctx* ctx = (quilt_ctx*)h->data;
-	context_free(ctx);
-	free(ctx);
-	fprintf(stderr, "TLS closed ok!\n");
-}
-
-void receive_response(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
+void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
 	quilt_ctx* ctx = (quilt_ctx*)stream->data;
 
 //	fprintf(stderr, "receive_response!");
 	if (nread < 0) {
 		/* Error or EOF */
-		uv_close((uv_handle_t*)ctx->connection, on_close);
+		context_close(ctx);
+		FREE(buf->base);
 	}
 	else {
 		// Append to in buffer
 		if (buffer_append(&ctx->buf_read, (unsigned char*)buf->base, nread) != nread)
 		{
+			free(buf->base);
 			fprintf(stderr, "Server data parse error! buffer_append failed.\n");
-			uv_close((uv_handle_t*)ctx->connection, on_close);
+			context_close(ctx);
 			return;
 		}
+		free(buf->base);
 
 		// Parse tls
 		tls_record record;
@@ -199,7 +205,7 @@ void receive_response(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
 		if (rs != MBEDTLS_ERR_SSL_WANT_READ)
 		{
 			fprintf(stderr, "Server data parse error!\n");
-			uv_close((uv_handle_t*)ctx->connection, on_close);
+			context_close(ctx);
 			return;
 		}
 	}
@@ -222,53 +228,79 @@ void on_send(uv_write_t* req, int status) {
 		fprintf(stderr, "Write error!");
 		fprintf(stderr, "uv_write error: %s - %s\n", uv_err_name(status), uv_strerror(status));
 
-		uv_close((uv_handle_t*)ctx->connection, on_close);
+		context_close(ctx);
 	}
+}
+
+void receive_client(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
+{
+	quilt_ctx* ctx = (quilt_ctx*)stream->data;
+
+	//	fprintf(stderr, "receive_response!");
+	if (nread < 0) {
+		/* Error or EOF */
+		FREE(buf->base);
+		context_close(ctx);
+	}
+	else
+	{
+		fwrite(buf->base, sizeof(char), nread, stdout);
+		free(buf->base);
+	}
+}
+
+static void tls_shutdown(quilt_ctx* ctx)
+{
+	uv_tls_t* h = ctx->server_connection_tls;
+	uv_tls_shutdown(h);
+	free(h);
+	ctx->server_connection_tls = NULL;
+	ctx->server_connection->data = ctx;
+	
+	fprintf(stderr, "TLS shutdown ok!\n");
 }
 
 void on_handshake(uv_tls_t* h, int status)
 {
-	if(status)
+	quilt_ctx* ctx = (quilt_ctx*)h->data;
+
+	// Shutdown ssl session and take over the connection
+	tls_shutdown(ctx);
+
+	if (status)
 	{
 		fprintf(stderr, "TLS handshake error!\n");
-		uv_tls_close(h, on_tls_close);
+		context_close(ctx);
 		return;
 	}
 
 	fprintf(stderr, "TLS handshake success!\n");
 
-	// Shutdown ssl session and take over the connection
-	quilt_ctx* ctx = (quilt_ctx*)h->data;
-	uv_tls_shutdown(h);
-	free(h);
-	ctx->client = NULL;
-	ctx->connection->data = ctx;
-
-	if(uv_read_start((uv_stream_t*)ctx->connection, alloc_buffer, receive_response))
+	if (uv_read_start((uv_stream_t*)ctx->server_connection, alloc_buffer, receive_server))
 	{
-		uv_close((uv_handle_t*)ctx->connection, on_close);
+		fprintf(stderr, "uv_read_start on server_connection error!\n");
+		context_close(ctx);
 		return;
 	}
 
-//	uv_tls_read(h, receive_response);
-//
-////	uv_tls_close(h, on_tls_close);
-//
-//	write_req_t *rq = (write_req_t*)malloc(sizeof(write_req_t));
-//	char* request_data = _strdup(GET_REQUEST);
-//	rq->buf = uv_buf_init(request_data, strlen(request_data));
-//	uv_tls_write(&rq->req, h, &rq->buf, on_send);
+	if (uv_read_start((uv_stream_t*)ctx->client_connection, alloc_buffer, receive_client))
+	{
+		fprintf(stderr, "uv_read_start on client_connection error!\n");
+		context_close(ctx);
+		return;
+	}
 }
 
 void on_connect(uv_connect_t* req, int status) {
 	uv_stream_t* tcp = req->handle;
+	quilt_ctx* ctx = (quilt_ctx*)tcp->data;
 
 	free(req);
 
 	if (status)
 	{
 		fprintf(stderr, "TCP connection error\n");
-		uv_close((uv_handle_t*)tcp, on_close);
+		context_close(ctx);
 		return;
 	}
 
@@ -279,34 +311,30 @@ void on_connect(uv_connect_t* req, int status) {
 		free(client);
 		fprintf(stderr, "TLS setup error\n");
 
-		uv_close((uv_handle_t*)tcp, on_close);
+		context_close(ctx);
 		return;
 	}
 
-	quilt_ctx* ctx = (quilt_ctx*)malloc(sizeof quilt_ctx);
-	if(!ctx)
-	{
-		uv_tls_close(client, on_tls_close);
-		return;
-	}
-
-	context_init(ctx);
-	ctx->client = client;
-	ctx->connection = (uv_tcp_t*)tcp;
-
-	// Inject out own random function
+	ctx->server_connection_tls = client;
 	client->data = ctx;
+	// Inject out own random function
 	client->random_cb = quilt_random;
 
 	if(uv_tls_handshake(client, HOST, on_handshake))
 	{
-		uv_tls_close(client, on_tls_close);
+		tls_shutdown(ctx);
+		context_close(ctx);
 	}
 }
 
-void on_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
+void on_server_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
+	quilt_ctx* ctx = (quilt_ctx*)resolver->data;
+	uv_loop_t* loop = resolver->loop;
+	free(resolver);
+
 	if (status < 0) {
 		fprintf(stderr, "getaddrinfo callback error %s\n", uv_err_name(status));
+		context_close(ctx);
 		return;
 	}
 
@@ -316,30 +344,90 @@ void on_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
 
 	uv_connect_t *connect_req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 	uv_tcp_t *socket = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
-	uv_tcp_init(resolver->loop, socket);
+	uv_tcp_init(loop, socket);
+	ctx->server_connection = socket;
+	socket->data = ctx;
 
 	uv_tcp_connect(connect_req, socket, (const struct sockaddr*) res->ai_addr, on_connect);
 
 	uv_freeaddrinfo(res);
 }
 
+void on_new_connection(uv_stream_t *server, int status) {
+	if (status < 0) {
+		fprintf(stderr, "New connection error %s\n", uv_strerror(status));
+		// error!
+		return;
+	}
+
+	fprintf(stderr, "New connection!\n");
+
+	uv_tcp_t *client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
+	uv_tcp_init(server->loop, client);
+	if (uv_accept(server, (uv_stream_t*)client) == 0) {
+		// Connect to server
+		quilt_ctx* ctx = (quilt_ctx*)malloc(sizeof(quilt_ctx));
+		context_init(ctx);
+		client->data = ctx;
+		ctx->client_connection = client;
+
+		uv_getaddrinfo_t* resolver = (uv_getaddrinfo_t*)malloc(sizeof(uv_getaddrinfo_t));
+		resolver->data = ctx;
+
+		struct addrinfo hints;
+		hints.ai_family = PF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_protocol = IPPROTO_TCP;
+		hints.ai_flags = 0;
+
+		if (uv_getaddrinfo(server->loop, resolver, on_server_resolved, "127.0.0.1", STR(PORT), &hints))
+		{
+			free(resolver);
+			context_close(ctx);
+		}
+	}
+	else
+	{
+		free(client);
+	}
+}
+
+static void on_signal(uv_signal_t *handle, int signum) {
+	uv_stop(handle->loop);
+}
+
 int main() {
 	uv_loop_t* loop = uv_default_loop();
-	
-	struct addrinfo hints;
-	hints.ai_family = PF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_protocol = IPPROTO_TCP;
-	hints.ai_flags = 0;
 
-	uv_getaddrinfo_t resolver;
-	fprintf(stderr, HOST " is... ");
-	int r = uv_getaddrinfo(loop, &resolver, on_resolved, "127.0.0.1", STR(PORT), &hints);
+	uv_signal_t sigterm;
+	uv_signal_t sigint;
+	uv_signal_init(loop, &sigterm);
+	uv_unref((uv_handle_t*)&sigterm);
+	uv_signal_init(loop, &sigint);
+	uv_unref((uv_handle_t*)&sigint);
+	uv_signal_start(&sigterm, on_signal, SIGTERM);
+	uv_signal_start(&sigint, on_signal, SIGINT);
 
+	uv_tcp_t server;
+	uv_tcp_init(loop, &server);
+
+	struct sockaddr_in addr;
+	uv_ip4_addr("127.0.0.1", LISTEN_PORT, &addr);
+
+	uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
+
+	int r = uv_listen((uv_stream_t*)&server, DEFAULT_BACKLOG, on_new_connection);
 	if (r) {
-		fprintf(stderr, "getaddrinfo call error %s\n", uv_err_name(r));
+		fprintf(stderr, "Listen error %s\n", uv_strerror(r));
 		return 1;
 	}
 
-	return uv_run(loop, UV_RUN_DEFAULT);
+	fprintf(stderr, "Listen on 127.0.0.1:" STR(LISTEN_PORT) "\n");
+
+	int rv = uv_run(loop, UV_RUN_DEFAULT);
+
+	uv_signal_stop(&sigterm);
+	uv_signal_stop(&sigint);
+
+	return rv;
 }

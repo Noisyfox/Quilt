@@ -123,3 +123,69 @@ void debug_print_buf(const char *file, int line, const char *text, const unsigne
 		fprintf(stderr, str);
 	}
 }
+
+static void on_close(uv_handle_t* peer) {
+	uv_ext_close_t* req = peer->data;
+	
+	for (size_t i = 0; i < req->handle_count; i++)
+	{
+		uv_handle_t* h = req->handles[i];
+		if(peer == h)
+		{
+			req->handle_closed |= 1LL << i;
+			h->data = req->handle_data[i];
+		}
+	}
+
+	if (req->handle_closed + 1 == 1LL << req->handle_count)
+	{
+		free(req->handle_data);
+		req->close_cb(req);
+	}
+}
+
+int uv_ext_close(uv_ext_close_t* req, uv_ext_close_cb cb)
+{
+	if(req->handle_count == 0)
+	{
+		cb(req);
+		return 0;
+	}
+
+	if (req->handle_count > 64)
+	{
+		return -1;
+	}
+
+	void** handle_data = malloc(sizeof(void*) * req->handle_count);
+	if (!handle_data)
+	{
+		return -1;
+	}
+
+	req->handle_closed = 0;
+	req->close_cb = cb;
+	req->handle_data = handle_data;
+
+	for (size_t i = 0; i < req->handle_count; i++)
+	{
+		uv_handle_t* h = req->handles[i];
+
+		if (uv_is_closing(h))
+		{
+			req->handle_closed |= 1LL << i;
+		}
+		else {
+			handle_data[i] = h->data;
+			h->data = req;
+			uv_close(h, on_close);
+		}
+	}
+	if(req->handle_closed + 1 == 1LL << req->handle_count)
+	{
+		free(req->handle_data);
+		cb(req);
+	}
+
+	return 0;
+}

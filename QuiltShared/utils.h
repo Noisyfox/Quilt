@@ -1,9 +1,19 @@
 #ifndef Q_UTILS_H
 #define Q_UTILS_H
 
+#include "uv.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
+#define FLAG_TEST(v, f) (((v) & (f)) == (f))
+#define FLAG_SET(v, f) ((v) = ((v) | (f)))
+
+#define DEFAULT_BACKLOG 10
 
 #define FREE(p) \
 	do { \
@@ -20,6 +30,25 @@ extern "C" {
 
 
 	void debug_print_buf(const char *file, int line, const char *text, const unsigned char *buf, size_t len);
+
+
+	typedef struct uv_ext_close_s uv_ext_close_t;
+
+	typedef void(*uv_ext_close_cb)(uv_ext_close_t* req);
+
+	struct uv_ext_close_s
+	{
+		void* data;
+		uv_handle_t** handles;
+		size_t handle_count;
+
+		// Private fields:
+		uv_ext_close_cb close_cb;
+		uint64_t handle_closed;
+		void** handle_data;
+	};
+
+	int uv_ext_close(uv_ext_close_t* req, uv_ext_close_cb cb);
 
 #ifdef __cplusplus
 };

@@ -6,20 +6,13 @@
 #include "mbedtls/ssl_internal.h"
 #include "utils.h"
 
-#define DEFAULT_BACKLOG 10
-
-#define STR_HELPER(x) #x
-#define STR(x) STR_HELPER(x)
+#define LISTEN_PORT 8043
 
 #define HOST "www.noisyfox.io"
 #define HOST_IP "172.104.122.122"
 #define PORT 443
 
 #define PSK "this is a key!"
-
-#define EQ(a,b) (((void*)(a)) == ((void*)(b)))
-#define FLAG_TEST(v, f) (((v) & (f)) == (f))
-#define FLAG_SET(v, f) ((v) = ((v) | (f)))
 
 enum quilt_tls_state
 {
@@ -57,6 +50,8 @@ void context_init(client_ctx* ctx)
 
 void context_free(client_ctx* ctx)
 {
+	FREE(ctx->mock);
+	FREE(ctx->client);
 	buffer_free(&ctx->client_buffer);
 	buffer_free(&ctx->mock_buffer);
 
@@ -76,24 +71,34 @@ static void alloc_buffer(uv_handle_t *handle, size_t size, uv_buf_t *buf) {
 	buf->len = size;
 }
 
-void on_closed(uv_handle_t* handle)
+void on_close(uv_ext_close_t* req)
 {
-	free(handle);
+	client_ctx* ctx = (client_ctx*)req->data;
+	free(req->handles);
+	free(req);
+
+	context_free(ctx);
+	fprintf(stderr, "Connection closed!\n");
 }
 
 void close_client(client_ctx* ctx)
 {
-	if (ctx->mock && !uv_is_closing((uv_handle_t*)ctx->mock))
-	{
-		uv_close((uv_handle_t*)ctx->mock, on_closed);
-	}
-	if (ctx->client && !uv_is_closing((uv_handle_t*)ctx->client))
-	{
-		uv_close((uv_handle_t*)ctx->client, on_closed);
-	}
+	uv_ext_close_t* close_req = (uv_ext_close_t*)malloc(sizeof(uv_ext_close_t));
+	close_req->data = ctx;
+	close_req->handles = (uv_handle_t**)malloc(sizeof(uv_handle_t*) * 2);
+	size_t i = 0;
 
-	context_free(ctx);
-	fprintf(stderr, "Connection closed!");
+	if (ctx->mock)
+	{
+		close_req->handles[i++] = (uv_handle_t*)ctx->mock;
+	}
+	if (ctx->client)
+	{
+		close_req->handles[i++] = (uv_handle_t*)ctx->client;
+	}
+	close_req->handle_count = i;
+
+	uv_ext_close(close_req, on_close);
 }
 
 void on_send(uv_write_t* req, int status) {
@@ -358,12 +363,8 @@ void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 	}
 	if (nread > 0)
 	{
-		write_req_t *rq = (write_req_t*)malloc(sizeof(write_req_t));
-		rq->buf = *buf;
-		rq->buf.len = nread;
-
 		if (!FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH)) {
-			if (buffer_append(&ctx->client_buffer, (unsigned char*)rq->buf.base, nread) != nread)
+			if (buffer_append(&ctx->client_buffer, (unsigned char*)buf->base, nread) != nread)
 			{
 				fprintf(stderr, "Client data parse error! buffer_append failed. Enter mock mode.\n");
 				mark_tls_failed(ctx);
@@ -419,6 +420,9 @@ void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 		}
 
 	bridge:
+		write_req_t * rq = (write_req_t*)malloc(sizeof(write_req_t));
+		rq->buf = *buf;
+		rq->buf.len = nread;
 		if (uv_write(&rq->req, (uv_stream_t*)ctx->mock, &rq->buf, 1, on_send))
 		{
 			FREE(buf->base);
@@ -608,15 +612,28 @@ void on_new_connection(uv_stream_t *server, int status) {
 	}
 }
 
+static void on_signal(uv_signal_t *handle, int signum) {
+	uv_stop(handle->loop);
+}
+
 int main()
 {
 	uv_loop_t* loop = uv_default_loop();
+
+	uv_signal_t sigterm;
+	uv_signal_t sigint;
+	uv_signal_init(loop, &sigterm);
+	uv_unref((uv_handle_t*)&sigterm);
+	uv_signal_init(loop, &sigint);
+	uv_unref((uv_handle_t*)&sigint);
+	uv_signal_start(&sigterm, on_signal, SIGTERM);
+	uv_signal_start(&sigint, on_signal, SIGINT);
 
 	uv_tcp_t server;
 	uv_tcp_init(loop, &server);
 
 	struct sockaddr_in addr;
-	uv_ip4_addr("127.0.0.1", 8043, &addr);
+	uv_ip4_addr("127.0.0.1", LISTEN_PORT, &addr);
 
 	uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
 
@@ -626,5 +643,12 @@ int main()
 		return 1;
 	}
 
-	return uv_run(loop, UV_RUN_DEFAULT);
+	fprintf(stderr, "Listen on 127.0.0.1:" STR(LISTEN_PORT) "\n");
+
+	int rv = uv_run(loop, UV_RUN_DEFAULT);
+
+	uv_signal_stop(&sigterm);
+	uv_signal_stop(&sigint);
+
+	return rv;
 }
