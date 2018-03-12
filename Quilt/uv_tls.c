@@ -11,7 +11,6 @@ uv_tls_t* uv_tls_get_client(uv_tcp_t* socket)
 
 int uv_tls_init(uv_tcp_t* connection, uv_tls_t* client) {
 	client->socket_ = connection;
-	client->socket_->data = client;
 
     tls_engine *ng = &(client->tls_eng);
     tls_engine_init(ng);
@@ -24,6 +23,8 @@ int uv_tls_init(uv_tcp_t* connection, uv_tls_t* client) {
 	client->close_cb = NULL;
 	client->handshake_cb = NULL;
 	client->random_cb = NULL;
+
+	client->socket_->data = client;
     return 0;
 }
 
@@ -82,44 +83,11 @@ void after_close(uv_handle_t *hdl) {
     uv_tls_t *s = uv_tls_get_client((uv_tcp_t*)hdl);
     if( s->close_cb) {
         s->close_cb(s);
-        s = NULL;
     }
 }
 
 int uv__tls_close(uv_tls_t *session) {
-
-    tls_engine *tls = &(session->tls_eng);
-
-    if (tls->app_bio_) {
-        BIO_free_all(tls->app_bio_);
-    }
-    if (tls->ssl_bio_) {
-        BIO_free_all(tls->ssl_bio_);
-    }
-
-//    int rv = SSL_shutdown(ng->ssl);
-//    int ssl_error;
-//    uv__tls_err_hdlr(session, rv);
-//
-//    if( rv == 0) {
-//        session->oprn_state = STATE_CLOSING;
-//        rv = SSL_shutdown(ng->ssl);
-//        uv__tls_err_hdlr(session, rv);
-//    }
-//
-//    if( rv == 1) {
-
-//    }
-//
-//    BIO_free(ng->app_bio_);
-//    ng->app_bio_ = NULL;
-//    SSL_free(ng->ssl);
-//    ng->ssl = NULL;
-//
-//    uv_close( (uv_handle_t*)uv_tls_get_stream(session), after_close);
-//
-//    return rv;
-    session->oprn_state = STATE_CLOSING;
+	uv_tls_shutdown(session);
     uv_close( (uv_handle_t*)uv_tls_get_stream(session), after_close);
     return 0;
 }
@@ -162,10 +130,25 @@ int uv__tls_handshake(uv_tls_t *tls) {
 }
 
 int uv_tls_shutdown(uv_tls_t *session) {
-//    assert( session != NULL && "Invalid session");
-//
-//    SSL_CTX_free(session->tls_eng.ctx);
-//    session->tls_eng.ctx = NULL;
+    assert( session != NULL && "Invalid session");
+
+	if(session->oprn_state != STATE_INIT)
+	{
+		uv_read_stop(uv_tls_get_stream(session));
+	}
+
+	session->oprn_state = STATE_CLOSING;
+
+	tls_engine *tls = &(session->tls_eng);
+
+	if (tls->app_bio_) {
+		BIO_free_all(tls->app_bio_);
+	}
+	if (tls->ssl_bio_) {
+		BIO_free_all(tls->ssl_bio_);
+	}
+
+	tls_engine_stop(tls);
 
     return 0;
 }

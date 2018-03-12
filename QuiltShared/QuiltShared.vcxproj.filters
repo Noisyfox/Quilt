@@ -18,9 +18,21 @@
     <ClCompile Include="utils.c">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="simple_buffer.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="tls.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="utils.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="simple_buffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="tls.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

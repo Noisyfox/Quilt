@@ -5,6 +5,12 @@
 extern "C" {
 #endif
 
+#define FREE(p) \
+	do { \
+	    if(p)free(p); \
+    } while(0)
+
+
 #define Q_DEBUG_BUF( text, buf, len )           \
     debug_print_buf( __FILE__, __LINE__, text, buf, len )
 

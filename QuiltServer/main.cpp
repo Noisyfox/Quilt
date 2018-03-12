@@ -21,11 +21,6 @@
 #define FLAG_TEST(v, f) (((v) & (f)) == (f))
 #define FLAG_SET(v, f) ((v) = ((v) | (f)))
 
-#define FREE(p) \
-	do { \
-	    if(p)free(p); \
-    } while(0)
-
 enum quilt_tls_state
 {
 	Q_TLS_INIT = 1,
@@ -98,6 +93,7 @@ void close_client(client_ctx* ctx)
 	}
 
 	context_free(ctx);
+	fprintf(stderr, "Connection closed!");
 }
 
 void on_send(uv_write_t* req, int status) {

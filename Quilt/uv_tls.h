@@ -43,11 +43,11 @@ extern "C" {
 
 typedef struct uv_tls_s uv_tls_t;
 
-typedef void (*tls_rd_cb)(uv_tls_t* h, int nrd, uv_buf_t* dcrypted);
+typedef void (*tls_rd_cb)(uv_tls_t* h, ssize_t nrd, uv_buf_t* dcrypted);
 typedef void (*tls_sd_cb)(uv_tls_t* h, int status);
 typedef void (*tls_close_cb)(uv_tls_t* h);
 typedef void (*tls_handshake_cb)(uv_tls_t* h, int status);
-typedef int(*tls_random_cb)(uv_tls_t* h, unsigned char *output, size_t output_len);
+typedef int  (*tls_random_cb)(uv_tls_t* h, unsigned char *output, size_t output_len);
 
 //Most used members are put first
 struct uv_tls_s {
