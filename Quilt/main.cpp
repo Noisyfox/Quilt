@@ -30,6 +30,7 @@ typedef struct
 	quilt_random_state rnd_state;
 
 	buffer buf_read;
+	buffer buf_write;
 } quilt_ctx;
 
 static void alloc_buffer(uv_handle_t *handle, size_t size, uv_buf_t *buf) {
@@ -44,6 +45,7 @@ static void context_init(quilt_ctx* ctx)
 	ctx->rnd_state = Q_RND_INIT;
 	
 	buffer_init(&ctx->buf_read);
+	buffer_init(&ctx->buf_write);
 }
 
 static void context_free(quilt_ctx* ctx)
@@ -51,6 +53,7 @@ static void context_free(quilt_ctx* ctx)
 	FREE(ctx->client_connection);
 	FREE(ctx->server_connection);
 	buffer_free(&ctx->buf_read);
+	buffer_free(&ctx->buf_write);
 }
 
 static void on_close(uv_ext_close_t* req) {
@@ -205,13 +208,12 @@ static void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 				break;
 			}
 
+			Q_DEBUG_BUF("Server response message", record.buf_msg, record.msg_len);
 			if((rs = uv_ext_write((uv_stream_t*)ctx->client_connection, record.buf_msg, record.msg_len, NULL, on_send)))
 			{
 				fprintf(stderr, "uv_ext_write failed.\n");
 				break;
 			}
-			fwrite(record.buf_msg, sizeof(char), record.msg_len, stdout);
-
 
 			// Remove record from buffer
 			if ((rs = tls_pop_record(&ctx->buf_read, &record)))
@@ -241,8 +243,17 @@ static void receive_client(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 	}
 	else
 	{
-		fwrite(buf->base, sizeof(char), nread, stdout);
+		Q_DEBUG_BUF("Client input", (const unsigned char*)buf->base, nread);
+		if(buffer_append(&ctx->buf_write, (const unsigned char*)buf->base, nread) != nread)
+		{
+			free(buf->base);
+			fprintf(stderr, "Client data enclose error! buffer_append failed.\n");
+			context_close(ctx);
+			return;
+		}
 		free(buf->base);
+
+		// Check if write buffer has enough content to send as a batch
 	}
 }
 
