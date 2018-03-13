@@ -175,7 +175,7 @@ int uv_tls_write(uv_write_t *req,
                  uv_buf_t *buf,
                  uv_write_cb cb) {
 
-    const uv_buf_t data = encode_data(client, buf);
+    const uv_buf_t data = encode_data(client, buf); // TODO: Here may cause memory leak! Fix this!
 
     int rv = uv_write(req, uv_tls_get_stream(client), &data, 1, cb);
     if (data.base != NULL) {

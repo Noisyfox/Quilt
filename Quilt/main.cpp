@@ -53,7 +53,7 @@ static void context_free(quilt_ctx* ctx)
 	buffer_free(&ctx->buf_read);
 }
 
-void on_close(uv_ext_close_t* req) {
+static void on_close(uv_ext_close_t* req) {
 	quilt_ctx* ctx = (quilt_ctx*)req->data;
 	free(req->handles);
 	free(req);
@@ -145,14 +145,25 @@ static int quilt_random(uv_tls_t* h, unsigned char *output, size_t output_len)
 	return 0;
 }
 
+static void on_send(uv_write_t* req, int status) {
+	uv_stream_t* tcp = req->handle;
+	quilt_ctx* ctx = (quilt_ctx*)tcp->data;
 
+	uv_ext_write_cleanup(req);
 
-typedef struct {
-	uv_write_t req;
-	uv_buf_t buf;
-} write_req_t;
+	if (status == 0) {
+		fprintf(stderr, "Write ok!\n");
+		//		uv_read_start(tcp, alloc_buffer, receive_response);
+	}
+	else {
+		fprintf(stderr, "Write error!");
+		fprintf(stderr, "uv_write error: %s - %s\n", uv_err_name(status), uv_strerror(status));
 
-void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
+		context_close(ctx);
+	}
+}
+
+static void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
 	quilt_ctx* ctx = (quilt_ctx*)stream->data;
 
 //	fprintf(stderr, "receive_response!");
@@ -193,7 +204,14 @@ void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
 				rs = MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
 				break;
 			}
+
+			if((rs = uv_ext_write((uv_stream_t*)ctx->client_connection, record.buf_msg, record.msg_len, NULL, on_send)))
+			{
+				fprintf(stderr, "uv_ext_write failed.\n");
+				break;
+			}
 			fwrite(record.buf_msg, sizeof(char), record.msg_len, stdout);
+
 
 			// Remove record from buffer
 			if ((rs = tls_pop_record(&ctx->buf_read, &record)))
@@ -211,28 +229,7 @@ void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf) {
 	}
 }
 
-void on_send(uv_write_t* req, int status) {
-	write_req_t* rq = (write_req_t*)req;
-
-	uv_stream_t* tcp = req->handle;
-	quilt_ctx* ctx = (quilt_ctx*)tcp->data;
-
-	free(rq->buf.base);
-	free(rq);
-
-	if (status == 0) {
-		fprintf(stderr, "Write ok!\n");
-//		uv_read_start(tcp, alloc_buffer, receive_response);
-	}
-	else {
-		fprintf(stderr, "Write error!");
-		fprintf(stderr, "uv_write error: %s - %s\n", uv_err_name(status), uv_strerror(status));
-
-		context_close(ctx);
-	}
-}
-
-void receive_client(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
+static void receive_client(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
 	quilt_ctx* ctx = (quilt_ctx*)stream->data;
 
@@ -260,7 +257,7 @@ static void tls_shutdown(quilt_ctx* ctx)
 	fprintf(stderr, "TLS shutdown ok!\n");
 }
 
-void on_handshake(uv_tls_t* h, int status)
+static void on_handshake(uv_tls_t* h, int status)
 {
 	quilt_ctx* ctx = (quilt_ctx*)h->data;
 
@@ -291,7 +288,7 @@ void on_handshake(uv_tls_t* h, int status)
 	}
 }
 
-void on_connect(uv_connect_t* req, int status) {
+static void on_connect(uv_connect_t* req, int status) {
 	uv_stream_t* tcp = req->handle;
 	quilt_ctx* ctx = (quilt_ctx*)tcp->data;
 
@@ -327,7 +324,7 @@ void on_connect(uv_connect_t* req, int status) {
 	}
 }
 
-void on_server_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
+static void on_server_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
 	quilt_ctx* ctx = (quilt_ctx*)resolver->data;
 	uv_loop_t* loop = resolver->loop;
 	free(resolver);
@@ -353,7 +350,7 @@ void on_server_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo 
 	uv_freeaddrinfo(res);
 }
 
-void on_new_connection(uv_stream_t *server, int status) {
+static void on_new_connection(uv_stream_t *server, int status) {
 	if (status < 0) {
 		fprintf(stderr, "New connection error %s\n", uv_strerror(status));
 		// error!

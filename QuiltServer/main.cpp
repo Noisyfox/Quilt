@@ -39,7 +39,7 @@ typedef struct
 	buffer mock_buffer;
 } client_ctx;
 
-void context_init(client_ctx* ctx)
+static void context_init(client_ctx* ctx)
 {
 	memset(ctx, 0, sizeof(client_ctx));
 
@@ -48,7 +48,7 @@ void context_init(client_ctx* ctx)
 	buffer_init(&ctx->mock_buffer);
 }
 
-void context_free(client_ctx* ctx)
+static void context_free(client_ctx* ctx)
 {
 	FREE(ctx->mock);
 	FREE(ctx->client);
@@ -59,19 +59,13 @@ void context_free(client_ctx* ctx)
 }
 
 
-typedef struct {
-	uv_write_t req;
-	uv_buf_t buf;
-} write_req_t;
-
-
 static void alloc_buffer(uv_handle_t *handle, size_t size, uv_buf_t *buf) {
 	buf->base = (char*)malloc(size);
 	assert(buf->base != NULL && "Memory allocation failed");
 	buf->len = size;
 }
 
-void on_close(uv_ext_close_t* req)
+static void on_close(uv_ext_close_t* req)
 {
 	client_ctx* ctx = (client_ctx*)req->data;
 	free(req->handles);
@@ -81,7 +75,7 @@ void on_close(uv_ext_close_t* req)
 	fprintf(stderr, "Connection closed!\n");
 }
 
-void close_client(client_ctx* ctx)
+static void close_client(client_ctx* ctx)
 {
 	uv_ext_close_t* close_req = (uv_ext_close_t*)malloc(sizeof(uv_ext_close_t));
 	close_req->data = ctx;
@@ -101,19 +95,16 @@ void close_client(client_ctx* ctx)
 	uv_ext_close(close_req, on_close);
 }
 
-void on_send(uv_write_t* req, int status) {
-	write_req_t* rq = (write_req_t*)req;
-
+static void on_send(uv_write_t* req, int status) {
 	uv_stream_t* tcp = req->handle;
-
-	free(rq->buf.base);
-	free(rq);
-
 	client_ctx* ctx = (client_ctx*)tcp->data;
+
+	uv_ext_write_cleanup(req);
 
 	if(status)
 	{
 		fprintf(stderr, "Write error!");
+		fprintf(stderr, "uv_write error: %s - %s\n", uv_err_name(status), uv_strerror(status));
 		close_client(ctx);
 	}
 }
@@ -126,7 +117,7 @@ static void mark_tls_failed(client_ctx* ctx)
 	ctx->is_comrade = FALSE;
 }
 
-int client_handle_next_record(client_ctx* ctx, tls_record* record)
+static int client_handle_next_record(client_ctx* ctx, tls_record* record)
 {
 	if(FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH))
 	{
@@ -234,7 +225,7 @@ int client_handle_next_record(client_ctx* ctx, tls_record* record)
 	return 0;
 }
 
-int mock_handle_next_record(client_ctx* ctx, tls_record* record)
+static int mock_handle_next_record(client_ctx* ctx, tls_record* record)
 {
 	if (FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH))
 	{
@@ -351,7 +342,7 @@ int mock_handle_next_record(client_ctx* ctx, tls_record* record)
 	return 0;
 }
 
-void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
+static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 	client_ctx* ctx = (client_ctx*)stream->data;
 
 	if (nread < 0)
@@ -420,19 +411,16 @@ void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 		}
 
 	bridge:
-		write_req_t * rq = (write_req_t*)malloc(sizeof(write_req_t));
-		rq->buf = *buf;
-		rq->buf.len = nread;
-		if (uv_write(&rq->req, (uv_stream_t*)ctx->mock, &rq->buf, 1, on_send))
+		if(uv_ext_write2((uv_stream_t*)ctx->mock, (unsigned char*)buf->base, nread, NULL, TRUE, on_send))
 		{
-			FREE(buf->base);
+			free(buf->base);
 			fprintf(stderr, "Write error!");
 			close_client(ctx);
 		}
 	}
 }
 
-void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
+static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 	client_ctx* ctx = (client_ctx*)stream->data;
 
 	if (nread < 0)
@@ -444,12 +432,8 @@ void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf
 	}
 	if (nread > 0)
 	{
-		write_req_t *rq = (write_req_t*)malloc(sizeof(write_req_t));
-		rq->buf = *buf;
-		rq->buf.len = nread;
-
 		if (!FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH)) {
-			if (buffer_append(&ctx->mock_buffer, (unsigned char*)rq->buf.base, nread) != nread)
+			if (buffer_append(&ctx->mock_buffer, (unsigned char*)buf->base, nread) != nread)
 			{
 				fprintf(stderr, "Mock data parse error! buffer_append failed. Enter mock mode.\n");
 				mark_tls_failed(ctx);
@@ -513,16 +497,16 @@ void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf
 		}
 
 	bridge:
-		if(uv_write(&rq->req, (uv_stream_t*)ctx->client, &rq->buf, 1, on_send))
+		if (uv_ext_write2((uv_stream_t*)ctx->client, (unsigned char*)buf->base, nread, NULL, TRUE, on_send))
 		{
-			FREE(buf->base);
+			free(buf->base);
 			fprintf(stderr, "Write error!");
 			close_client(ctx);
 		}
 	}
 }
 
-void on_mock_connect(uv_connect_t* req, int status) {
+static void on_mock_connect(uv_connect_t* req, int status) {
 	client_ctx* ctx = (client_ctx*)req->data;
 
 	free(req);
@@ -541,7 +525,7 @@ void on_mock_connect(uv_connect_t* req, int status) {
 	uv_read_start((uv_stream_t*)ctx->mock, alloc_buffer, on_mock_server_recv);
 }
 
-void on_mock_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
+static void on_mock_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
 	client_ctx* ctx = (client_ctx*)resolver->data;
 	uv_loop_t* loop = resolver->loop;
 	free(resolver);
@@ -573,7 +557,7 @@ void on_mock_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *r
 	uv_freeaddrinfo(res);
 }
 
-void on_new_connection(uv_stream_t *server, int status) {
+static void on_new_connection(uv_stream_t *server, int status) {
 	if (status < 0) {
 		fprintf(stderr, "New connection error %s\n", uv_strerror(status));
 		// error!

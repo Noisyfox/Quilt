@@ -49,6 +49,10 @@ extern "C" {
 	};
 
 	int uv_ext_close(uv_ext_close_t* req, uv_ext_close_cb cb);
+	int uv_ext_write(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, void* data, uv_write_cb cb);
+	// None-copy version of uv_ext_write, re-use the buffer you given
+	int uv_ext_write2(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, void* data, BOOL free_after_write, uv_write_cb cb);
+	void* uv_ext_write_cleanup(uv_write_t* req);
 
 #ifdef __cplusplus
 };

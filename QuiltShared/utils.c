@@ -189,3 +189,63 @@ int uv_ext_close(uv_ext_close_t* req, uv_ext_close_cb cb)
 
 	return 0;
 }
+
+
+typedef struct {
+	uv_write_t req;
+	uv_buf_t buf;
+	BOOL free_buf;
+} write_req_t;
+
+int uv_ext_write(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, void* data, uv_write_cb cb)
+{
+	unsigned char* b = malloc(sizeof(unsigned char) * buf_len);
+	if (!b)
+	{
+		return -1;
+	}
+	memcpy(b, buf, buf_len);
+
+	int rv = uv_ext_write2(handle, b, buf_len, data, TRUE, cb);
+	if (rv)
+	{
+		free(b);
+	}
+
+	return rv;
+}
+
+int uv_ext_write2(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, void* data, BOOL free_after_write, uv_write_cb cb)
+{
+	write_req_t* rq = (write_req_t*)malloc(sizeof(write_req_t));
+	if (!rq)
+	{
+		return -1;
+	}
+
+	rq->free_buf = free_after_write;
+	rq->buf.base = buf;
+	rq->buf.len = buf_len;
+	rq->req.data = data;
+
+	if (uv_write(&rq->req, handle, &rq->buf, 1, cb))
+	{
+		free(rq);
+		return -1;
+	}
+
+	return 0;
+}
+
+void* uv_ext_write_cleanup(uv_write_t* req)
+{
+	void* data = req->data;
+
+	write_req_t* rq = (write_req_t*)req;
+	if (rq->free_buf) {
+		free(rq->buf.base);
+	}
+	free(rq);
+
+	return data;
+}
