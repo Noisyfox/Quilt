@@ -29,6 +29,9 @@ enum quilt_tls_state
 
 typedef struct
 {
+	int tls_major_ver;
+	int tls_minor_ver;
+
 	BOOL is_comrade; // Товарищ, водка!
 	int tls_state;
 
@@ -36,7 +39,7 @@ typedef struct
 	uv_tcp_t* mock;
 
 	buffer client_buffer;
-	buffer mock_buffer;
+	buffer server_buffer;
 } client_ctx;
 
 static void context_init(client_ctx* ctx)
@@ -45,7 +48,7 @@ static void context_init(client_ctx* ctx)
 
 	ctx->tls_state = Q_TLS_INIT;
 	buffer_init(&ctx->client_buffer);
-	buffer_init(&ctx->mock_buffer);
+	buffer_init(&ctx->server_buffer);
 }
 
 static void context_free(client_ctx* ctx)
@@ -53,7 +56,7 @@ static void context_free(client_ctx* ctx)
 	FREE(ctx->mock);
 	FREE(ctx->client);
 	buffer_free(&ctx->client_buffer);
-	buffer_free(&ctx->mock_buffer);
+	buffer_free(&ctx->server_buffer);
 
 	free(ctx);
 }
@@ -112,7 +115,7 @@ static void on_send(uv_write_t* req, int status) {
 static void mark_tls_failed(client_ctx* ctx)
 {
 	buffer_free(&ctx->client_buffer);
-	buffer_free(&ctx->mock_buffer);
+	buffer_free(&ctx->server_buffer);
 	FLAG_SET(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH);
 	ctx->is_comrade = FALSE;
 }
@@ -165,7 +168,7 @@ static int client_handle_next_record(client_ctx* ctx, tls_record* record)
 		// Random check pass! For now it looks good.
 		// TODO: check random replay attack
 		FLAG_SET(ctx->tls_state, Q_TLS_CLIENT_HELLO);
-		ctx->is_comrade = true;
+		ctx->is_comrade = TRUE;
 		fprintf(stderr, "Client random check pass!\n");
 	}
 	else
@@ -310,6 +313,10 @@ static int mock_handle_next_record(client_ctx* ctx, tls_record* record)
 			}
 			FLAG_SET(ctx->tls_state, Q_TLS_SERVER_HANDSHAKE_FIN);
 
+			// Save ssl version
+			ctx->tls_major_ver = record->major_ver;
+			ctx->tls_minor_ver = record->minor_ver;
+
 			// All handshake should finished!
 			FLAG_SET(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH);
 			fprintf(stderr, "Handshake finished!\n");
@@ -407,8 +414,71 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 		else
 		{
 			// Process & proxy
-			//return;
-			Q_DEBUG_BUF("Client data", (unsigned char*)buf->base, nread);
+			if(ctx->is_comrade)
+			{
+				Q_DEBUG_BUF("Client data", (unsigned char*)buf->base, nread);
+
+				// Append to in buffer
+				if (buffer_append(&ctx->client_buffer, (unsigned char*)buf->base, nread) != nread)
+				{
+					free(buf->base);
+					fprintf(stderr, "Client data parse error! buffer_append failed.\n");
+					close_client(ctx);
+					return;
+				}
+				free(buf->base);
+
+				// Parse tls
+				tls_record record;
+				int rs;
+				while (true) {
+					// Peek next record from buffer
+					if ((rs = tls_peek_next_record(&ctx->client_buffer, &record)))
+					{
+						if (rs != MBEDTLS_ERR_SSL_WANT_READ)
+						{
+							fprintf(stderr, "tls_peek_next_record failed.\n");
+						}
+						break;
+					}
+
+					// Handle next record
+					if (record.msg_type != MBEDTLS_SSL_MSG_APPLICATION_DATA)
+					{
+						fprintf(stderr, "Should be application data!\n");
+						rs = MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
+						break;
+					}
+
+					if (ctx->tls_major_ver != record.major_ver || ctx->tls_minor_ver != record.minor_ver)
+					{
+						fprintf(stderr, "TLS version mismatch!\n");
+						rs = MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+						break;
+					}
+
+					Q_DEBUG_BUF("Client message", record.buf_msg, record.msg_len);
+//					if ((rs = uv_ext_write((uv_stream_t*)ctx->client_connection, record.buf_msg, record.msg_len, NULL, on_send)))
+//					{
+//						fprintf(stderr, "uv_ext_write failed.\n");
+//						break;
+//					}
+
+					// Remove record from buffer
+					if ((rs = tls_pop_record(&ctx->client_buffer, &record)))
+					{
+						fprintf(stderr, "tls_pop_record failed.\n");
+						break;
+					}
+				}
+				if (rs != MBEDTLS_ERR_SSL_WANT_READ)
+				{
+					fprintf(stderr, "Client data parse error!\n");
+					close_client(ctx);
+					return;
+				}
+				return;
+			}
 		}
 
 	bridge:
@@ -434,7 +504,7 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 	if (nread > 0)
 	{
 		if (!FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH)) {
-			if (buffer_append(&ctx->mock_buffer, (unsigned char*)buf->base, nread) != nread)
+			if (buffer_append(&ctx->server_buffer, (unsigned char*)buf->base, nread) != nread)
 			{
 				fprintf(stderr, "Mock data parse error! buffer_append failed. Enter mock mode.\n");
 				mark_tls_failed(ctx);
@@ -445,7 +515,7 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 			int rs;
 			while (true) {
 				// Peek next record from buffer
-				if ((rs = tls_peek_next_record(&ctx->mock_buffer, &record)))
+				if ((rs = tls_peek_next_record(&ctx->server_buffer, &record)))
 				{
 					if (rs != MBEDTLS_ERR_SSL_WANT_READ)
 					{
@@ -461,7 +531,7 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 				}
 
 				// Remove record from buffer
-				if ((rs = tls_pop_record(&ctx->mock_buffer, &record)))
+				if ((rs = tls_pop_record(&ctx->server_buffer, &record)))
 				{
 					fprintf(stderr, "tls_pop_record failed.\n");
 					break;
@@ -478,7 +548,7 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 			if (FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH))
 			{
 				// Make sure all data in tls buffers are consumed
-				if(buffer_available(&ctx->client_buffer) || buffer_available(&ctx->mock_buffer))
+				if(buffer_available(&ctx->client_buffer) || buffer_available(&ctx->server_buffer))
 				{
 					fprintf(stderr, "Handshake finished with remain data in buffer. Not expected behavior. Enter mock mode.\n");
 					mark_tls_failed(ctx);
@@ -486,15 +556,22 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 					goto bridge;
 				}
 
-				// clean up tls buffers
-				buffer_free(&ctx->client_buffer);
-				buffer_free(&ctx->mock_buffer);
+				// Close mock server connection. Ignore the callback here
+				// Since it will be freed anyway by close_client(). 
+				uv_close((uv_handle_t*)ctx->mock, NULL);
 			}
 		}
 		else
 		{
-			// Process & proxy
-			//return;
+			if(ctx->is_comrade)
+			{
+				// Should not reach here!
+				free(buf->base);
+				fprintf(stderr, "Received data from mock server after switch to proxy mode! Something went wrong!");
+				close_client(ctx);
+
+				return;
+			}
 		}
 
 	bridge:

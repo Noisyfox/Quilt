@@ -213,6 +213,13 @@ static void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 				break;
 			}
 
+			if (ctx->tls_major_ver != record.major_ver || ctx->tls_minor_ver != record.minor_ver)
+			{
+				fprintf(stderr, "TLS version mismatch!\n");
+				rs = MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+				break;
+			}
+
 			Q_DEBUG_BUF("Server response message", record.buf_msg, record.msg_len);
 			if((rs = uv_ext_write((uv_stream_t*)ctx->client_connection, record.buf_msg, record.msg_len, NULL, on_send)))
 			{
