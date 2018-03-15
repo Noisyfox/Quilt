@@ -147,8 +147,8 @@ int tls_wrap_application_data(int v_major, int v_minor, const unsigned char* dat
 
 	out[0] = MBEDTLS_SSL_MSG_APPLICATION_DATA;
 	mbedtls_ssl_write_version(v_major, v_minor, MBEDTLS_SSL_TRANSPORT_STREAM, out + 1);
-	out[3] = (unsigned char)(required_len >> 8);
-	out[4] = (unsigned char)(required_len);
+	out[3] = (unsigned char)(ilen >> 8);
+	out[4] = (unsigned char)(ilen);
 
 	memcpy(out + 5, data, ilen);
 
