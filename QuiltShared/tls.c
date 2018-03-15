@@ -3,6 +3,7 @@
 #include "mbedtls/ssl.h"
 #include "mbedtls/ssl_internal.h"
 #include "tls.h"
+#include <stdlib.h>
 
 int tls_peek_next_record(buffer* buf, tls_record* out)
 {
@@ -126,6 +127,33 @@ int tls_extract_handshake(tls_record* record, size_t offset, tls_handshake* out,
 	if (next_offset) {
 		*next_offset = offset + 4 + msg_len;
 	}
+
+	return 0;
+}
+
+int tls_wrap_application_data(int v_major, int v_minor, const unsigned char* data, size_t ilen, unsigned char** output, size_t* olen)
+{
+	if (ilen > Q_MAX_TLS_RECORD_LENGTH)
+	{
+		return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+	}
+
+	size_t required_len = ilen + 5;
+	unsigned char* out = malloc(required_len);
+	if (!out)
+	{
+		return MBEDTLS_ERR_SSL_ALLOC_FAILED;
+	}
+
+	out[0] = MBEDTLS_SSL_MSG_APPLICATION_DATA;
+	mbedtls_ssl_write_version(v_major, v_minor, MBEDTLS_SSL_TRANSPORT_STREAM, out + 1);
+	out[3] = (unsigned char)(required_len >> 8);
+	out[4] = (unsigned char)(required_len);
+
+	memcpy(out + 5, data, ilen);
+
+	*output = out;
+	*olen = required_len;
 
 	return 0;
 }

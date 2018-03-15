@@ -39,6 +39,10 @@ extern "C" {
 
 	int tls_extract_handshake(tls_record* record, size_t offset, tls_handshake* out, size_t* next_offset);
 
+	int tls_wrap_application_data(int v_major, int v_minor, const unsigned char* data, size_t ilen, unsigned char** output, size_t* olen);
+
+#define Q_MAX_TLS_RECORD_LENGTH 16408
+
 #ifdef __cplusplus
 };
 #endif

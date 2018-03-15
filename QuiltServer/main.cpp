@@ -408,6 +408,7 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 		{
 			// Process & proxy
 			//return;
+			Q_DEBUG_BUF("Client data", (unsigned char*)buf->base, nread);
 		}
 
 	bridge:

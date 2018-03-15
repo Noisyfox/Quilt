@@ -22,6 +22,9 @@ enum quilt_random_state {
 
 typedef struct
 {
+	int tls_major_ver;
+	int tls_minor_ver;
+
 	uv_tcp_t* client_connection;
 
 	uv_tls_t* server_connection_tls;
@@ -176,6 +179,8 @@ static void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 		FREE(buf->base);
 	}
 	else {
+		Q_DEBUG_BUF("Server response data", (unsigned char*)buf->base, nread);
+
 		// Append to in buffer
 		if (buffer_append(&ctx->buf_read, (unsigned char*)buf->base, nread) != nread)
 		{
@@ -253,7 +258,16 @@ static void receive_client(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 		}
 		free(buf->base);
 
+		// TODO: Pause send timer
 		// Check if write buffer has enough content to send as a batch
+		if(uv_write_tls_application_data_all((uv_stream_t*)ctx->server_connection, ctx->tls_major_ver, ctx->tls_minor_ver, &ctx->buf_write, on_send))
+		{
+			fprintf(stderr, "Client data enclose error! uv_write_tls_application_data_full failed.\n");
+			context_close(ctx);
+			return;
+		}
+		
+		// TODO: If has data remaining, start timer
 	}
 }
 
@@ -271,6 +285,11 @@ static void tls_shutdown(quilt_ctx* ctx)
 static void on_handshake(uv_tls_t* h, int status)
 {
 	quilt_ctx* ctx = (quilt_ctx*)h->data;
+
+	// Before shutdown ssl, save ssl version
+	// No need for error check, just read it any way since we won't use them if ssl handshake failed.
+	ctx->tls_major_ver = ctx->server_connection_tls->tls_eng.ssl.major_ver;
+	ctx->tls_minor_ver = ctx->server_connection_tls->tls_eng.ssl.minor_ver;
 
 	// Shutdown ssl session and take over the connection
 	tls_shutdown(ctx);

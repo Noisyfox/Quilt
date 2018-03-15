@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "mbedtls/aes.h"
 #include "mbedtls/sha256.h"
+#include "tls.h"
 
 int doSHA256(const unsigned char *input, size_t ilen, unsigned char output[32])
 {
@@ -154,13 +155,13 @@ int uv_ext_close(uv_ext_close_t* req, uv_ext_close_cb cb)
 
 	if (req->handle_count > 64)
 	{
-		return -1;
+		return UV_EINVAL;
 	}
 
 	void** handle_data = malloc(sizeof(void*) * req->handle_count);
 	if (!handle_data)
 	{
-		return -1;
+		return UV_ENOMEM;
 	}
 
 	req->handle_closed = 0;
@@ -202,7 +203,7 @@ int uv_ext_write(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, 
 	unsigned char* b = malloc(sizeof(unsigned char) * buf_len);
 	if (!b)
 	{
-		return -1;
+		return UV_ENOMEM;
 	}
 	memcpy(b, buf, buf_len);
 
@@ -220,7 +221,7 @@ int uv_ext_write2(uv_stream_t* handle, const unsigned char* buf, size_t buf_len,
 	write_req_t* rq = (write_req_t*)malloc(sizeof(write_req_t));
 	if (!rq)
 	{
-		return -1;
+		return UV_ENOMEM;
 	}
 
 	rq->free_buf = free_after_write;
@@ -228,10 +229,11 @@ int uv_ext_write2(uv_stream_t* handle, const unsigned char* buf, size_t buf_len,
 	rq->buf.len = buf_len;
 	rq->req.data = data;
 
-	if (uv_write(&rq->req, handle, &rq->buf, 1, cb))
+	int rv = uv_write(&rq->req, handle, &rq->buf, 1, cb);
+	if (rv)
 	{
 		free(rq);
-		return -1;
+		return rv;
 	}
 
 	return 0;
@@ -248,4 +250,84 @@ void* uv_ext_write_cleanup(uv_write_t* req)
 	free(rq);
 
 	return data;
+}
+
+/*
+ * Send data as much as possible, within full tls records
+ */
+int uv_write_tls_application_data_full(uv_stream_t* handle, int v_major, int v_minor, buffer* raw_data, uv_write_cb cb)
+{
+	unsigned char* buf;
+	while ((buf = buffer_raw_header(raw_data, Q_MAX_TLS_RECORD_LENGTH)))
+	{
+		unsigned char* obuf;
+		size_t olen;
+
+		int rv = tls_wrap_application_data(v_major, v_minor, buf, Q_MAX_TLS_RECORD_LENGTH, &obuf, &olen);
+		if (rv)
+		{
+			return rv;
+		}
+
+		rv = uv_ext_write2(handle, obuf, olen, NULL, TRUE, cb);
+		if (rv)
+		{
+			free(obuf);
+			return rv;
+		}
+
+		if (buffer_pop(raw_data, Q_MAX_TLS_RECORD_LENGTH) != Q_MAX_TLS_RECORD_LENGTH)
+		{
+			return UV_UNKNOWN;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * Send all remain data
+ */
+int uv_write_tls_application_data_all(uv_stream_t* handle, int v_major, int v_minor, buffer* raw_data, uv_write_cb cb)
+{
+	int rv = uv_write_tls_application_data_full(handle, v_major, v_minor, raw_data, cb);
+	if (rv)
+	{
+		return rv;
+	}
+
+	size_t remain = buffer_available(raw_data);
+	if (!remain)
+	{
+		return 0;
+	}
+
+	unsigned char* buf = buffer_raw_header(raw_data, remain);
+	if (!buf)
+	{
+		return UV_UNKNOWN;
+	}
+
+	unsigned char* obuf;
+	size_t olen;
+
+	rv = tls_wrap_application_data(v_major, v_minor, buf, remain, &obuf, &olen);
+	if (rv)
+	{
+		return rv;
+	}
+
+	rv = uv_ext_write2(handle, obuf, olen, NULL, TRUE, cb);
+	if (rv)
+	{
+		free(obuf);
+		return rv;
+	}
+
+	if (buffer_pop(raw_data, remain) != remain)
+	{
+		return UV_UNKNOWN;
+	}
+
+	return 0;
 }
