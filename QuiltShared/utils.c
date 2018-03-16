@@ -262,7 +262,7 @@ int uv_ext_write2(uv_stream_t* handle, const unsigned char* buf, size_t buf_len,
 	}
 
 	rq->free_buf = free_after_write;
-	rq->buf.base = buf;
+	rq->buf.base = (char*)buf;
 	rq->buf.len = buf_len;
 	rq->req.data = data;
 
