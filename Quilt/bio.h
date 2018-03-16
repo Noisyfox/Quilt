@@ -55,7 +55,7 @@ int BIO_make_bio_pair(BIO *b1, BIO *b2);
 
 
 size_t BIO_ctrl_pending(BIO *bio);
-int BIO_read(BIO *bio, const char *buf, size_t size);
+int BIO_read(BIO *bio, char *buf, size_t size);
 int BIO_write(BIO *bio, const char *buf, size_t size);
 
 int BIO_net_recv( void *ctx, unsigned char *buf, size_t len);

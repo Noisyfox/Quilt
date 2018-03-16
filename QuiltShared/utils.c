@@ -1,5 +1,6 @@
-#include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "utils.h"
 #include "mbedtls/aes.h"
@@ -66,7 +67,7 @@ int calculate_random(const unsigned char iv[16], const char* psk, const long tim
 	}
 
 	// Generate goal
-	sprintf_s(goal, 1024, "%ld%s", timestamp, psk); // Here we allow 1 hour difference
+	snprintf(goal, sizeof goal, "%ld%s", timestamp, psk); // Here we allow 1 hour difference
 	if ((rv = doSHA256((const unsigned char *)goal, strlen(goal), rest)))
 	{
 		return rv;
@@ -78,6 +79,7 @@ int calculate_random(const unsigned char iv[16], const char* psk, const long tim
 
 #define DEBUG_BUF_SIZE      512
 
+// Copy from mbedtls/debug.c
 void debug_print_msg(const char *file, int line, const char *format, ...)
 {
 	va_list argp;
@@ -110,6 +112,7 @@ void debug_print_msg(const char *file, int line, const char *format, ...)
 	fputs(str, stderr);
 }
 
+// Copy from mbedtls/debug.c
 void debug_print_buf(const char *file, int line, const char *text, const unsigned char *buf, size_t len)
 {
 	char str[DEBUG_BUF_SIZE];
@@ -119,7 +122,7 @@ void debug_print_buf(const char *file, int line, const char *text, const unsigne
 	snprintf(str + idx, sizeof(str) - idx, "dumping '%s' (%u bytes)\n",
 		text, (unsigned int)len);
 
-	fprintf(stderr, str);
+	fputs(str, stderr);
 
 	idx = 0;
 	memset(txt, 0, sizeof(txt));
@@ -133,7 +136,7 @@ void debug_print_buf(const char *file, int line, const char *text, const unsigne
 			if (i > 0)
 			{
 				snprintf(str + idx, sizeof(str) - idx, "  %s\n", txt);
-				fprintf(stderr, str);
+				fputs(str, stderr);
 
 				idx = 0;
 				memset(txt, 0, sizeof(txt));
@@ -155,13 +158,13 @@ void debug_print_buf(const char *file, int line, const char *text, const unsigne
 			idx += snprintf(str + idx, sizeof(str) - idx, "   ");
 
 		snprintf(str + idx, sizeof(str) - idx, "  %s\n", txt);
-		fprintf(stderr, str);
+		fputs(str, stderr);
 	}
 }
 
 static void on_close(uv_handle_t* peer) {
 	uv_ext_close_t* req = peer->data;
-	
+
 	for (size_t i = 0; i < req->handle_count; i++)
 	{
 		uv_handle_t* h = req->handles[i];

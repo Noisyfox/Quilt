@@ -1,6 +1,19 @@
 #ifndef Q_UTILS_H
 #define Q_UTILS_H
 
+#ifndef _WIN32
+// TODO: replace with non-Windows specific stuffs
+#ifndef BOOL
+#define BOOL int
+#endif
+#ifndef TRUE
+#define TRUE 1
+#endif
+#ifndef FALSE
+#define FALSE 0
+#endif
+#endif
+
 #include "uv.h"
 #include "simple_buffer.h"
 
