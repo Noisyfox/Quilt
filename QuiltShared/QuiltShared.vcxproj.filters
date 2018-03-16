@@ -24,6 +24,9 @@
     <ClCompile Include="tls.c">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="json.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="utils.h">
@@ -33,6 +36,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="tls.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="json.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

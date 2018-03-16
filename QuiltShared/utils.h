@@ -58,6 +58,14 @@ extern "C" {
 	int uv_write_tls_application_data_full(uv_stream_t* handle, int v_major, int v_minor, buffer* raw_data, uv_write_cb cb);
 	int uv_write_tls_application_data_all(uv_stream_t* handle, int v_major, int v_minor, buffer* raw_data, uv_write_cb cb);
 
+#if !((defined(__STDC_LIB_EXT1__) && __STDC_WANT_LIB_EXT1__) || defined(_MSC_VER))
+	static inline int strcpy_s(char * dest, rsize_t destsz, const char * src)
+	{
+		return snprintf(dest, destsz, "%s", src);
+	}
+#endif
+
+
 #ifdef __cplusplus
 };
 #endif

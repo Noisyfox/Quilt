@@ -163,11 +163,13 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="json.c" />
     <ClCompile Include="simple_buffer.c" />
     <ClCompile Include="tls.c" />
     <ClCompile Include="utils.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="json.h" />
     <ClInclude Include="simple_buffer.h" />
     <ClInclude Include="tls.h" />
     <ClInclude Include="utils.h" />
