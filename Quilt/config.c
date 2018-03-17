@@ -1,0 +1,139 @@
+#include <stdio.h>
+#include <stdlib.h>
+#ifdef _MSC_VER
+#include "getopt.h"
+#else
+#include <getopt.h>
+#endif
+
+#include "config.h"
+#include "utils.h"
+
+static void show_usage()
+{
+	fputs(
+		"\n", stderr);
+	fputs(
+		"Quilt client\n\n", stderr);
+	fputs(
+		"  usage:\n\n", stderr);
+	fprintf(stderr,
+		"    %s\n\n", __argv[0]);
+	fputs(
+		"       -s <server_host>           Host name or IP address of your remote server.\n", stderr);
+	fputs(
+		"       -m <mocking_host>          Host name of your mocking server.\n", stderr);
+	fputs(
+		"       -k <password>              Password of your remote server.\n", stderr);
+	fputs(
+		"       -l <local_port>            Port number of your local server.\n", stderr);
+	fputs(
+		"\n", stderr);
+	fputs(
+		"       [-p <server_port>]         Port number of your remote server. Default is 443.\n", stderr);
+	fputs(
+		"       [-c <config_file>]         The path to config file.\n", stderr);
+	fputs(
+		"\n", stderr);
+	fputs(
+		"       [-v]                       Verbose mode.\n", stderr);
+	fputs(
+		"       [-h, --help]               Print this message.\n", stderr);
+	fputs(
+		"\n", stderr);
+}
+
+/* Vals for long options */
+enum {
+	GETOPT_VAL_HELP = 257
+};
+
+int parse_config(int argc, char** argv, config_t* out)
+{
+	char* server_host = NULL;
+	int server_port = 0;
+	char* mocking_host = NULL;
+	char* password = NULL;
+	int local_port = 0;
+	char* conf_path = NULL;
+
+	// Parse options
+	static struct option long_options[] = {
+		{ "help",        no_argument,       NULL, GETOPT_VAL_HELP },
+		{ NULL,                          0, NULL,               0 }
+	};
+	int c;
+	while ((c = getopt_long(argc, argv, "s:p:m:k:l:c:vh", long_options, NULL)) != -1)
+	{
+		switch (c)
+		{
+		case 's':
+			server_host = optarg;
+			break;
+		case 'p':
+			if (parse_int(optarg, &server_port, 10))
+			{
+				warnx("invalid port number -- %s", optarg);
+				goto err;
+			}
+			break;
+		case 'm':
+			mocking_host = optarg;
+			break;
+		case 'k':
+			password = optarg;
+			break;
+		case 'l':
+			if (parse_int(optarg, &local_port, 10))
+			{
+				warnx("invalid port number -- %s", optarg);
+				goto err;
+			}
+			break;
+		case 'c':
+			conf_path = optarg;
+			break;
+		case 'v':
+			verbose = 1;
+			break;
+		case 'h':
+		case GETOPT_VAL_HELP:
+			show_usage();
+			return CFG_NORMAL_EXIT;
+		case '?':
+			goto err;
+		}
+	}
+
+	// Read config file
+	if (conf_path)
+	{
+		// TODO: read cfg
+	}
+
+	// Verify if option presents
+	if(!server_host || !mocking_host || !password || !local_port)
+	{
+		warnx("not all required parameters are provided");
+		goto err;
+	}
+
+	// Apply default value
+	if(!server_port)
+	{
+		server_port = 443;
+	}
+
+
+	out->server_host = server_host;
+	out->server_port = server_port;
+	out->mocking_host = mocking_host;
+	out->password = password;
+	out->local_port = local_port;
+
+	return CFG_NORMAL;
+
+err:
+	show_usage();
+	return CFG_ERR;
+}

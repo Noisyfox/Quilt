@@ -1,5 +1,6 @@
 
 #include "tls_engine.h"
+#include "utils.h"
 
 int tls_engine_init(tls_engine *tls)
 {
@@ -14,7 +15,7 @@ int tls_engine_init(tls_engine *tls)
     mbedtls_ctr_drbg_init( &tls->ctr_drbg );
     const char *pers = "chat";
 
-    mbedtls_printf( "\n  . Seeding the random number generator...\n" );
+	Q_DEBUG_MSG("\n  . Seeding the random number generator..." );
 
     mbedtls_entropy_init( &tls->entropy );
     if( ( ret = mbedtls_ctr_drbg_seed( &tls->ctr_drbg,
@@ -27,12 +28,12 @@ int tls_engine_init(tls_engine *tls)
         return ERR_TLS_ERROR;
     }
 
-    mbedtls_printf( " ok\n" );
+	Q_DEBUG_MSG(" ok" );
 
     /*
      * 0. Initialize certificates
      */
-    mbedtls_printf( "  . Loading the CA root certificate ...\n" );
+	Q_DEBUG_MSG("  . Loading the CA root certificate ..." );
 
 	ret = mbedtls_x509_crt_parse_file(&tls->cacert, "truststore.txt");
     if( ret < 0 )
@@ -41,7 +42,7 @@ int tls_engine_init(tls_engine *tls)
         return ERR_TLS_ERROR;
     }
 
-    mbedtls_printf( " ok (%d skipped)\n", ret );
+	Q_DEBUG_MSG(" ok (%d skipped)", ret );
 
     return ERR_TLS_OK;
 }

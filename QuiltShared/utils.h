@@ -8,6 +8,8 @@
 extern "C" {
 #endif
 
+	extern int verbose;
+
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 
@@ -23,13 +25,18 @@ extern "C" {
 
 
 #define Q_DEBUG_BUF( text, buf, len )           \
-    debug_print_buf( __FILE__, __LINE__, text, buf, len )
+	if(verbose) \
+		debug_print_buf( __FILE__, __LINE__, text, buf, len )
+
+#define Q_DEBUG_MSG( ... )                    \
+	if(verbose) \
+		debug_print_msg( __FILE__, __LINE__, __VA_ARGS__ )
 
 	int doSHA256(const unsigned char *input, size_t ilen, unsigned char output[32]);
 	int doAES(int mode, const unsigned char iv[16], const unsigned char key[32], const unsigned char *input, size_t ilen, unsigned char *output);
 	int calculate_random(const unsigned char iv[16], const char* psk, long timestamp, unsigned char output[16]);
 
-
+	void debug_print_msg(const char *file, int line, const char *format, ...);
 	void debug_print_buf(const char *file, int line, const char *text, const unsigned char *buf, size_t len);
 
 
@@ -65,6 +72,7 @@ extern "C" {
 	}
 #endif
 
+	int parse_int(const char* in, int* out, int radix);
 
 #ifdef __cplusplus
 };

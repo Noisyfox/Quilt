@@ -167,12 +167,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="bio.c" />
+    <ClCompile Include="config.c" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="tls_engine.c" />
     <ClCompile Include="uv_tls.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bio.h" />
+    <ClInclude Include="config.h" />
     <ClInclude Include="tls_engine.h" />
     <ClInclude Include="uv_tls.h" />
   </ItemGroup>

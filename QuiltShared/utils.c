@@ -6,6 +6,8 @@
 #include "mbedtls/sha256.h"
 #include "tls.h"
 
+int verbose = 0;
+
 int doSHA256(const unsigned char *input, size_t ilen, unsigned char output[32])
 {
 	mbedtls_sha256_context sha;
@@ -75,6 +77,38 @@ int calculate_random(const unsigned char iv[16], const char* psk, const long tim
 }
 
 #define DEBUG_BUF_SIZE      512
+
+void debug_print_msg(const char *file, int line, const char *format, ...)
+{
+	va_list argp;
+	char str[DEBUG_BUF_SIZE];
+	int ret;
+
+	va_start(argp, format);
+#if defined(_WIN32)
+#if defined(_TRUNCATE)
+	ret = _vsnprintf_s(str, DEBUG_BUF_SIZE, _TRUNCATE, format, argp);
+#else
+	ret = _vsnprintf(str, DEBUG_BUF_SIZE, format, argp);
+	if (ret < 0 || (size_t)ret == DEBUG_BUF_SIZE)
+	{
+		str[DEBUG_BUF_SIZE - 1] = '\0';
+		ret = -1;
+	}
+#endif
+#else
+	ret = vsnprintf(str, DEBUG_BUF_SIZE, format, argp);
+#endif
+	va_end(argp);
+
+	if (ret >= 0 && ret < DEBUG_BUF_SIZE - 1)
+	{
+		str[ret] = '\n';
+		str[ret + 1] = '\0';
+	}
+
+	fputs(str, stderr);
+}
 
 void debug_print_buf(const char *file, int line, const char *text, const unsigned char *buf, size_t len)
 {
@@ -329,5 +363,20 @@ int uv_write_tls_application_data_all(uv_stream_t* handle, int v_major, int v_mi
 		return UV_UNKNOWN;
 	}
 
+	return 0;
+}
+
+int parse_int(const char* in, int* out, int radix)
+{
+	char* end;
+	int v = strtol(in, &end, radix);
+
+	if(end == in || end != in + strlen(in))
+	{
+		return -1;
+	}
+
+	*out = v;
+	
 	return 0;
 }

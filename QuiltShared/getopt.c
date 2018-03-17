@@ -125,7 +125,7 @@ _vwarnx(const char *fmt,va_list ap)
   (void)fprintf(stderr,"\n");
 }
 
-static void
+void
 warnx(const char *fmt,...)
 {
   va_list ap;

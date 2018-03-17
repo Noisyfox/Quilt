@@ -38,6 +38,8 @@ WINGETOPT_API extern char *optarg;		/* pointer to argument of current option  */
 
 extern int getopt(int nargc, char * const *nargv, const char *options);
 
+extern void warnx(const char *fmt, ...);
+
 #ifdef _BSD_SOURCE
 /*
  * BSD adds the non-standard `optreset' feature, for reinitialisation

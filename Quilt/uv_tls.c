@@ -1,4 +1,5 @@
 #include "uv_tls.h"
+#include "utils.h"
 
 uv_stream_t *uv_tls_get_stream(uv_tls_t *tls) {
     return (uv_stream_t *) tls->socket_;
@@ -256,7 +257,7 @@ static int assume_role(uv_tls_t* h) {
     mbedtls_ssl_context ctx = tls->ssl;
 
     int ret;
-    mbedtls_printf("  . Setting up the SSL/TLS structure...\n");
+    Q_DEBUG_MSG("  . Setting up the SSL/TLS structure...");
 
     if ((ret = mbedtls_ssl_config_defaults(&tls->conf,
                                            MBEDTLS_SSL_IS_CLIENT,
@@ -265,7 +266,7 @@ static int assume_role(uv_tls_t* h) {
         mbedtls_printf(" failed\n  ! mbedtls_ssl_config_defaults returned %d\n\n", ret);
     }
 
-    mbedtls_printf(" ok\n");
+	Q_DEBUG_MSG(" ok");
 
     mbedtls_ssl_conf_authmode(&tls->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
     mbedtls_ssl_conf_ca_chain(&tls->conf, &tls->cacert, NULL);

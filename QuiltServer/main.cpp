@@ -75,7 +75,7 @@ static void on_close(uv_ext_close_t* req)
 	free(req);
 
 	context_free(ctx);
-	fprintf(stderr, "Connection closed!\n");
+	Q_DEBUG_MSG("Connection closed!");
 }
 
 static void close_client(client_ctx* ctx)
@@ -169,7 +169,7 @@ static int client_handle_next_record(client_ctx* ctx, tls_record* record)
 		// TODO: check random replay attack
 		FLAG_SET(ctx->tls_state, Q_TLS_CLIENT_HELLO);
 		ctx->is_comrade = TRUE;
-		fprintf(stderr, "Client random check pass!\n");
+		Q_DEBUG_MSG("Client random check pass!");
 	}
 	else
 	{
@@ -319,7 +319,7 @@ static int mock_handle_next_record(client_ctx* ctx, tls_record* record)
 
 			// All handshake should finished!
 			FLAG_SET(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH);
-			fprintf(stderr, "Handshake finished!\n");
+			Q_DEBUG_MSG("Handshake finished!");
 		}
 		else if (record->msg_type == MBEDTLS_SSL_MSG_CHANGE_CIPHER_SPEC)
 		{
@@ -596,7 +596,7 @@ static void on_mock_connect(uv_connect_t* req, int status) {
 		return;
 	}
 
-	fprintf(stderr, "Mock server connected!\n");
+	Q_DEBUG_MSG("Mock server connected!");
 	
 	// Start bridging server & client
 	uv_read_start((uv_stream_t*)ctx->client, alloc_buffer, on_client_recv);
@@ -617,7 +617,7 @@ static void on_mock_resolved(uv_getaddrinfo_t *resolver, int status, struct addr
 
 	char addr[17] = { '\0' };
 	uv_ip4_name((struct sockaddr_in*) res->ai_addr, addr, 16);
-	fprintf(stderr, "%s\n", addr);
+	Q_DEBUG_MSG("%s", addr);
 
 	uv_connect_t *connect_req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
 	uv_tcp_t *socket = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
@@ -642,7 +642,7 @@ static void on_new_connection(uv_stream_t *server, int status) {
 		return;
 	}
 
-	fprintf(stderr, "New connection!\n");
+	Q_DEBUG_MSG("New connection!");
 
 	uv_tcp_t *client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
 	uv_tcp_init(server->loop, client);
