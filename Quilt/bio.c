@@ -242,7 +242,7 @@ int BIO_reset(BIO *bio) {
 }
 
 
-int BIO_read(BIO *bio, const char *buf, size_t size) {
+int BIO_read(BIO *bio, char *buf, size_t size) {
     int   sz;
     char* pt;
 
@@ -283,7 +283,7 @@ BIO *SSL_BIO_new(int type) {
     BIO *bio = (BIO *) malloc(sizeof(BIO));
     if (bio) {
         memset(bio, 0, sizeof(BIO));
-		
+
         bio->type = type;
         bio->mem = NULL;
         bio->prev = NULL;
@@ -333,7 +333,7 @@ int BIO_net_recv( void *ctx, unsigned char *buf, size_t len) {
 
     int   sz;
 
-    sz = BIO_read(bio, (const char *)buf, len);
+    sz = BIO_read(bio, buf, len);
 
     if (sz <= 0) {
         return MBEDTLS_ERR_SSL_WANT_READ;

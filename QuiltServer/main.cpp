@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "uv.h"
 #include "tls.h"
@@ -552,7 +554,7 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 				}
 
 				// Close mock server connection. Ignore the callback here
-				// Since it will be freed anyway by close_client(). 
+				// Since it will be freed anyway by close_client().
 				uv_close((uv_handle_t*)ctx->mock, NULL);
 			}
 		}
@@ -592,7 +594,7 @@ static void on_mock_connect(uv_connect_t* req, int status) {
 	}
 
 	Q_DEBUG_MSG("Mock server connected!");
-	
+
 	// Start bridging server & client
 	uv_read_start((uv_stream_t*)ctx->client, alloc_buffer, on_client_recv);
 	uv_read_start((uv_stream_t*)ctx->mock, alloc_buffer, on_mock_server_recv);
@@ -682,6 +684,8 @@ static void on_signal(uv_signal_t *handle, int signum) {
 
 int main(int argc, char** argv)
 {
+	progname = argv[0];
+
 	config_t config;
 	int r = parse_config(argc, argv, &config);
 	switch (r)

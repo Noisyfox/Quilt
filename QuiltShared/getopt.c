@@ -56,9 +56,9 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <windows.h>
 
 #include "getopt.h"
+#include "utils.h"
 
 #define	REPLACE_GETOPT		/* use this getopt as the system getopt(3) */
 
@@ -84,7 +84,7 @@ char    *optarg;		/* argument associated with option */
 #define	INORDER 	(int)1
 
 #ifndef __CYGWIN__
-#define __progname __argv[0]
+#define __progname progname
 #else
 extern char __declspec(dllimport) *__progname;
 #endif
