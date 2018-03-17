@@ -6,11 +6,11 @@
 #include "tls.h"
 #include "config.h"
 
-enum quilt_random_state {
+typedef enum {
 	Q_RND_INIT = 0,
 	Q_RND_TIME, // After unix time field filled
 	Q_RND_FINISH
-};
+} quilt_random_state;
 
 typedef struct
 {
@@ -188,7 +188,7 @@ static void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 		// Parse tls
 		tls_record record;
 		int rs;
-		while (true) {
+		while (1) {
 			// Peek next record from buffer
 			if ((rs = tls_peek_next_record(&ctx->buf_read, &record)))
 			{

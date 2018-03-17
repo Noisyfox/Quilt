@@ -1,7 +1,7 @@
 use_c99()
 
 set(SOURCES
-  main.cpp
+  main.c
   config.c
   config.h
 )

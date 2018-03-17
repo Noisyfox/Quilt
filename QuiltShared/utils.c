@@ -234,7 +234,7 @@ int uv_ext_close(uv_ext_close_t* req, uv_ext_close_cb cb)
 typedef struct {
 	uv_write_t req;
 	uv_buf_t buf;
-	BOOL free_buf;
+	int free_buf;
 } write_req_t;
 
 int uv_ext_write(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, void* data, uv_write_cb cb)
@@ -246,7 +246,7 @@ int uv_ext_write(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, 
 	}
 	memcpy(b, buf, buf_len);
 
-	int rv = uv_ext_write2(handle, b, buf_len, data, TRUE, cb);
+	int rv = uv_ext_write2(handle, b, buf_len, data, 1, cb);
 	if (rv)
 	{
 		free(b);
@@ -255,7 +255,7 @@ int uv_ext_write(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, 
 	return rv;
 }
 
-int uv_ext_write2(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, void* data, BOOL free_after_write, uv_write_cb cb)
+int uv_ext_write2(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, void* data, int free_after_write, uv_write_cb cb)
 {
 	write_req_t* rq = (write_req_t*)malloc(sizeof(write_req_t));
 	if (!rq)
@@ -308,7 +308,7 @@ int uv_write_tls_application_data_full(uv_stream_t* handle, int v_major, int v_m
 			return rv;
 		}
 
-		rv = uv_ext_write2(handle, obuf, olen, NULL, TRUE, cb);
+		rv = uv_ext_write2(handle, obuf, olen, NULL, 1, cb);
 		if (rv)
 		{
 			free(obuf);
@@ -356,7 +356,7 @@ int uv_write_tls_application_data_all(uv_stream_t* handle, int v_major, int v_mi
 		return rv;
 	}
 
-	rv = uv_ext_write2(handle, obuf, olen, NULL, TRUE, cb);
+	rv = uv_ext_write2(handle, obuf, olen, NULL, 1, cb);
 	if (rv)
 	{
 		free(obuf);

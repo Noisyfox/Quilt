@@ -29,7 +29,7 @@ typedef struct
 	int tls_major_ver;
 	int tls_minor_ver;
 
-	BOOL is_comrade; // Товарищ, водка!
+	int is_comrade; // Товарищ, водка!
 	int tls_state;
 
 	uv_tcp_t* client;
@@ -114,7 +114,7 @@ static void mark_tls_failed(client_ctx* ctx)
 	buffer_free(&ctx->client_buffer);
 	buffer_free(&ctx->server_buffer);
 	FLAG_SET(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH);
-	ctx->is_comrade = FALSE;
+	ctx->is_comrade = 0;
 }
 
 static int client_handle_next_record(client_ctx* ctx, tls_record* record)
@@ -148,7 +148,7 @@ static int client_handle_next_record(client_ctx* ctx, tls_record* record)
 
 		// Check random
 		long t = mbedtls_time(NULL) / 60 / 60;
-		int is_secret_random = FALSE;
+		int is_secret_random = 0;
 		int rv = 0;
 		unsigned char target_random[16];
 		for (int i = -1; i <= 1; i++)
@@ -165,7 +165,7 @@ static int client_handle_next_record(client_ctx* ctx, tls_record* record)
 		// Random check pass! For now it looks good.
 		// TODO: check random replay attack
 		FLAG_SET(ctx->tls_state, Q_TLS_CLIENT_HELLO);
-		ctx->is_comrade = TRUE;
+		ctx->is_comrade = 1;
 		Q_DEBUG_MSG("Client random check pass!");
 	}
 	else
@@ -368,7 +368,7 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 			// Parse tls
 			tls_record record;
 			int rs;
-			while (true) {
+			while (1) {
 				// Peek next record from buffer
 				if((rs = tls_peek_next_record(&ctx->client_buffer, &record)))
 				{
@@ -428,7 +428,7 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 				// Parse tls
 				tls_record record;
 				int rs;
-				while (true) {
+				while (1) {
 					// Peek next record from buffer
 					if ((rs = tls_peek_next_record(&ctx->client_buffer, &record)))
 					{
@@ -479,7 +479,7 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 		}
 
 	bridge:
-		if(uv_ext_write2((uv_stream_t*)ctx->mock, (unsigned char*)buf->base, nread, NULL, TRUE, on_send))
+		if(uv_ext_write2((uv_stream_t*)ctx->mock, (unsigned char*)buf->base, nread, NULL, 1, on_send))
 		{
 			free(buf->base);
 			fprintf(stderr, "Write error!");
@@ -510,7 +510,7 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 			// Parse tls
 			tls_record record;
 			int rs;
-			while (true) {
+			while (1) {
 				// Peek next record from buffer
 				if ((rs = tls_peek_next_record(&ctx->server_buffer, &record)))
 				{
@@ -572,7 +572,7 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 		}
 
 	bridge:
-		if (uv_ext_write2((uv_stream_t*)ctx->client, (unsigned char*)buf->base, nread, NULL, TRUE, on_send))
+		if (uv_ext_write2((uv_stream_t*)ctx->client, (unsigned char*)buf->base, nread, NULL, 1, on_send))
 		{
 			free(buf->base);
 			fprintf(stderr, "Write error!");

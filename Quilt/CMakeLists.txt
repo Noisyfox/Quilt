@@ -3,7 +3,7 @@ use_c99()
 set(SOURCES
   bio.c
   bio.h
-  main.cpp
+  main.c
   tls_engine.c
   tls_engine.h
   uv_tls.c
