@@ -684,6 +684,8 @@ static void on_signal(uv_signal_t *handle, int signum) {
 
 int main(int argc, char** argv)
 {
+	progname = argv[0];
+
 	config_t config;
 	int r = parse_config(argc, argv, &config);
 	switch (r)

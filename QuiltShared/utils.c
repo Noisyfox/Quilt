@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "utils.h"
 #include "mbedtls/aes.h"
 #include "mbedtls/sha256.h"
 #include "tls.h"
 
+const char* progname = NULL;
 int verbose = 0;
 
 int doSHA256(const unsigned char *input, size_t ilen, unsigned char output[32])

@@ -1,11 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#ifdef _MSC_VER
-#include "getopt.h"
-#else
-#include <getopt.h>
-#endif
 
+#include "getopt.h"
 #include "config.h"
 #include "utils.h"
 
@@ -18,7 +14,7 @@ static void show_usage()
 	fputs(
 		"  usage:\n\n", stderr);
 	fprintf(stderr,
-		"    %s\n\n", __argv[0]);
+		"    %s\n\n", progname);
 	fputs(
 		"       -p <server_port>           Port number of your remote server.\n", stderr);
 	fputs(
