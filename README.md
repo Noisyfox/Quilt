@@ -16,7 +16,7 @@ This is a POC project. Currently build on Windows with Visual Studio 2017 & Linu
 
 ## Build on Linux
 1. Clone project with all sub-modules.
-2. Run `cd build && cmake .. && make all` in project root dir.
+2. Run `mkdir build && cd build && cmake .. && make all` in project root dir.
 
 ## Run
 1. Add `127.0.0.1 www.noisyfox.io` to your hosts file. Don't forget to remove this line once you've done otherwise you may miss tons of amazing things from my site and you and I will both be sad about that :worried:.
