@@ -20,17 +20,19 @@ static void show_usage()
 	fprintf(stderr,
 		"    %s\n\n", __argv[0]);
 	fputs(
-		"       -s <server_host>           Host name or IP address of your remote server.\n", stderr);
+		"       -p <server_port>           Port number of your remote server.\n", stderr);
 	fputs(
 		"       -m <mocking_host>          Host name of your mocking server.\n", stderr);
 	fputs(
-		"       -k <password>              Password of your remote server.\n", stderr);
+		"       -k <password>              Password of this server.\n", stderr);
 	fputs(
-		"       -l <local_port>            Port number of your local server.\n", stderr);
+		"       -l <local_port>            Port number of this server.\n", stderr);
 	fputs(
 		"\n", stderr);
 	fputs(
-		"       [-p <server_port>]         Port number of your remote server. Default is 443.\n", stderr);
+		"       [-s <server_host>]         Host name or IP address of your remote server. Default 127.0.0.1.\n", stderr);
+	fputs(
+		"       [-i <mocking_ip>]          IP of your mocking server.\n", stderr);
 	fputs(
 		"       [-c <config_file>]         The path to config file.\n", stderr);
 	fputs(
@@ -53,6 +55,7 @@ int parse_config(int argc, char** argv, config_t* out)
 	const char* server_host = NULL;
 	int server_port = 0;
 	const char* mocking_host = NULL;
+	const char* mocking_ip = NULL;
 	const char* password = NULL;
 	int local_port = 0;
 	const char* conf_path = NULL;
@@ -63,7 +66,7 @@ int parse_config(int argc, char** argv, config_t* out)
 		{ NULL,                          0, NULL,               0 }
 	};
 	int c;
-	while ((c = getopt_long(argc, argv, "s:m:k:l:p:c:vh", long_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "p:m:k:l:s:i:c:vh", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -79,6 +82,9 @@ int parse_config(int argc, char** argv, config_t* out)
 			break;
 		case 'm':
 			mocking_host = optarg;
+			break;
+		case 'i':
+			mocking_ip = optarg;
 			break;
 		case 'k':
 			password = optarg;
@@ -112,22 +118,23 @@ int parse_config(int argc, char** argv, config_t* out)
 	}
 
 	// Verify if option presents
-	if(!server_host || !mocking_host || !password || !local_port)
+	if (!server_port || !mocking_host || !password || !local_port)
 	{
 		warnx("not all required parameters are provided");
 		goto err;
 	}
 
 	// Apply default value
-	if(!server_port)
+	if (!server_host)
 	{
-		server_port = 443;
+		server_host = "127.0.0.1";
 	}
 
 
 	out->server_host = server_host;
 	out->server_port = server_port;
 	out->mocking_host = mocking_host;
+	out->mocking_ip = mocking_ip;
 	out->password = password;
 	out->local_port = local_port;
 

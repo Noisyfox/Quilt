@@ -5,14 +5,7 @@
 #include "mbedtls/ssl.h"
 #include "mbedtls/ssl_internal.h"
 #include "utils.h"
-
-#define LISTEN_PORT 8043
-
-#define HOST "www.noisyfox.io"
-#define HOST_IP "172.104.122.122"
-#define PORT 443
-
-#define PSK "this is a key!"
+#include "config.h"
 
 enum quilt_tls_state
 {
@@ -29,6 +22,8 @@ enum quilt_tls_state
 
 typedef struct
 {
+	config_t* config;
+
 	int tls_major_ver;
 	int tls_minor_ver;
 
@@ -156,7 +151,7 @@ static int client_handle_next_record(client_ctx* ctx, tls_record* record)
 		unsigned char target_random[16];
 		for (int i = -1; i <= 1; i++)
 		{
-			rv |= calculate_random(random, PSK, t + i, target_random) != 0;
+			rv |= calculate_random(random, ctx->config->password, t + i, target_random) != 0;
 			is_secret_random |= mbedtls_ssl_safer_memcmp(target_random, random + 16, 16) == 0;
 		}
 		rv = rv | (!is_secret_random);
@@ -642,6 +637,8 @@ static void on_new_connection(uv_stream_t *server, int status) {
 		return;
 	}
 
+	config_t* config = (config_t*)server->data;
+
 	Q_DEBUG_MSG("New connection!");
 
 	uv_tcp_t *client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
@@ -650,7 +647,7 @@ static void on_new_connection(uv_stream_t *server, int status) {
 		// Connect to target
 		client_ctx* ctx = (client_ctx*)malloc(sizeof(client_ctx));
 		context_init(ctx);
-
+		ctx->config = config;
 		ctx->client = client;
 		client->data = ctx;
 		uv_getaddrinfo_t* resolver = (uv_getaddrinfo_t*)malloc(sizeof(uv_getaddrinfo_t));
@@ -662,7 +659,12 @@ static void on_new_connection(uv_stream_t *server, int status) {
 		hints.ai_protocol = IPPROTO_TCP;
 		hints.ai_flags = 0;
 
-		if (uv_getaddrinfo(server->loop, resolver, on_mock_resolved, HOST_IP, STR(PORT), &hints))
+		const char* target = config->mocking_ip;
+		if(!target)
+		{
+			target = config->mocking_host;
+		}
+		if (uv_getaddrinfo(server->loop, resolver, on_mock_resolved, target, STR(443), &hints))
 		{
 			free(resolver);
 			close_client(ctx);
@@ -678,8 +680,20 @@ static void on_signal(uv_signal_t *handle, int signum) {
 	uv_stop(handle->loop);
 }
 
-int main()
+int main(int argc, char** argv)
 {
+	config_t config;
+	int r = parse_config(argc, argv, &config);
+	switch (r)
+	{
+	case CFG_NORMAL_EXIT:
+		return 0;
+	case CFG_NORMAL:
+		break;
+	default:
+		return -1;
+	}
+
 	uv_loop_t* loop = uv_default_loop();
 
 	uv_signal_t sigterm;
@@ -693,19 +707,20 @@ int main()
 
 	uv_tcp_t server;
 	uv_tcp_init(loop, &server);
+	server.data = &config;
 
 	struct sockaddr_in addr;
-	uv_ip4_addr("127.0.0.1", LISTEN_PORT, &addr);
+	uv_ip4_addr("127.0.0.1", config.local_port, &addr);
 
 	uv_tcp_bind(&server, (const struct sockaddr*)&addr, 0);
 
-	int r = uv_listen((uv_stream_t*)&server, DEFAULT_BACKLOG, on_new_connection);
+	r = uv_listen((uv_stream_t*)&server, DEFAULT_BACKLOG, on_new_connection);
 	if (r) {
 		fprintf(stderr, "Listen error %s\n", uv_strerror(r));
 		return 1;
 	}
 
-	fprintf(stderr, "Listen on 127.0.0.1:" STR(LISTEN_PORT) "\n");
+	fprintf(stderr, "Listen on 127.0.0.1:%d\n",  config.local_port);
 
 	int rv = uv_run(loop, UV_RUN_DEFAULT);
 

@@ -14,6 +14,7 @@ extern "C" {
 		const char* server_host;
 		int server_port;
 		const char* mocking_host;
+		const char* mocking_ip;
 		const char* password;
 		int local_port;
 	} config_t;
