@@ -718,7 +718,7 @@ static void on_new_connection(uv_stream_t *server, int status) {
 		{
 			target = config->mocking_host;
 		}
-		if(uv_ext_resolve_connect(connect_req, socket, target, 443, on_mock_connect))
+		if(uv_ext_resolve_connect(connect_req, socket, target, config->mocking_port, on_mock_connect))
 		{
 			free(connect_req);
 			close_client(ctx);

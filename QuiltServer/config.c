@@ -30,6 +30,8 @@ static void show_usage()
 	fputs(
 		"       [-i <mocking_ip>]          IP of your mocking server.\n", stderr);
 	fputs(
+		"       [--mock-port <port>]       Port number of your mocking server. Default 443.\n", stderr);
+	fputs(
 		"       [-c <config_file>]         The path to config file.\n", stderr);
 	fputs(
 		"\n", stderr);
@@ -43,7 +45,8 @@ static void show_usage()
 
 /* Vals for long options */
 enum {
-	GETOPT_VAL_HELP = 257
+	GETOPT_VAL_HELP = 257,
+	GETOPT_VAL_MOCK_PORT
 };
 
 int parse_config(int argc, char** argv, config_t* out)
@@ -52,14 +55,16 @@ int parse_config(int argc, char** argv, config_t* out)
 	int server_port = 0;
 	const char* mocking_host = NULL;
 	const char* mocking_ip = NULL;
+	int mocking_port = 0;
 	const char* password = NULL;
 	int local_port = 0;
 	const char* conf_path = NULL;
 
 	// Parse options
 	static struct option long_options[] = {
-		{ "help",        no_argument,       NULL, GETOPT_VAL_HELP },
-		{ NULL,                          0, NULL,               0 }
+		{ "help",        no_argument,       NULL, GETOPT_VAL_HELP      },
+		{ "mock-port",   required_argument, NULL, GETOPT_VAL_MOCK_PORT },
+		{ NULL,          0,                 NULL, 0                    }
 	};
 	int c;
 	while ((c = getopt_long(argc, argv, "p:m:k:l:s:i:c:vh", long_options, NULL)) != -1)
@@ -81,6 +86,13 @@ int parse_config(int argc, char** argv, config_t* out)
 			break;
 		case 'i':
 			mocking_ip = optarg;
+			break;
+		case GETOPT_VAL_MOCK_PORT:
+			if (parse_int(optarg, &mocking_port, 10))
+			{
+				warnx("invalid port number -- %s", optarg);
+				goto err;
+			}
 			break;
 		case 'k':
 			password = optarg;
@@ -125,12 +137,17 @@ int parse_config(int argc, char** argv, config_t* out)
 	{
 		server_host = "127.0.0.1";
 	}
+	if (!mocking_port)
+	{
+		mocking_port = 443;
+	}
 
 
 	out->server_host = server_host;
 	out->server_port = server_port;
 	out->mocking_host = mocking_host;
 	out->mocking_ip = mocking_ip;
+	out->mocking_port = mocking_port;
 	out->password = password;
 	out->local_port = local_port;
 
