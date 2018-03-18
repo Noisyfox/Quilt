@@ -385,3 +385,56 @@ int parse_int(const char* in, int* out, int radix)
 	
 	return 0;
 }
+
+static void on_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res)
+{
+	uv_connect_t* req = resolver->data;
+	free(resolver);
+
+	if(status)
+	{
+//		fprintf(stderr, "Connection error %s\n", uv_err_name(status));
+		req->cb(req, status);
+		uv_freeaddrinfo(res);
+		return;
+	}
+
+	char addr[17] = { '\0' };
+	uv_ip4_name((struct sockaddr_in*) res->ai_addr, addr, 16);
+	Q_DEBUG_MSG("%s", addr);
+
+	int r = uv_tcp_connect(req, (uv_tcp_t*)req->handle, (const struct sockaddr*) res->ai_addr, req->cb);
+	if (r)
+	{
+		req->cb(req, r);
+	}
+
+	uv_freeaddrinfo(res);
+}
+
+int uv_ext_resolve_connect(uv_connect_t* req, uv_tcp_t* handle, const char* host, int port, uv_connect_cb cb)
+{
+	req->cb = cb;
+	req->handle = (uv_stream_t*)handle;
+
+	uv_getaddrinfo_t* resolver = (uv_getaddrinfo_t*)malloc(sizeof(uv_getaddrinfo_t));
+	resolver->data = req;
+
+	struct addrinfo hints;
+	hints.ai_family = PF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = 0;
+
+	char port_str[16];
+	snprintf(port_str, sizeof port_str, "%d", port);
+
+	int r = uv_getaddrinfo(handle->loop, resolver, on_resolved, host, port_str, &hints);
+	if (r)
+	{
+		free(resolver);
+		return r;
+	}
+
+	return 0;
+}

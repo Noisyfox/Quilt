@@ -62,6 +62,7 @@ extern "C" {
 	// None-copy version of uv_ext_write, re-use the buffer you given
 	int uv_ext_write2(uv_stream_t* handle, const unsigned char* buf, size_t buf_len, void* data, int free_after_write, uv_write_cb cb);
 	void* uv_ext_write_cleanup(uv_write_t* req);
+	int uv_ext_resolve_connect(uv_connect_t* req, uv_tcp_t* handle, const char* host, int port, uv_connect_cb cb);
 
 	int uv_write_tls_application_data_full(uv_stream_t* handle, int v_major, int v_minor, buffer* raw_data, uv_write_cb cb);
 	int uv_write_tls_application_data_all(uv_stream_t* handle, int v_major, int v_minor, buffer* raw_data, uv_write_cb cb);

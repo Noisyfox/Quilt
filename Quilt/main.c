@@ -57,6 +57,7 @@ static void on_close(uv_ext_close_t* req) {
 	quilt_ctx* ctx = (quilt_ctx*)req->data;
 	free(req->handles);
 	free(req);
+
 	context_free(ctx);
 	free(ctx);
 	Q_DEBUG_MSG("Closed ok!");
@@ -327,7 +328,7 @@ static void on_connect(uv_connect_t* req, int status) {
 
 	if (status)
 	{
-		fprintf(stderr, "TCP connection error\n");
+		fprintf(stderr, "TCP connection error %s\n", uv_strerror(status));
 		context_close(ctx);
 		return;
 	}
@@ -355,32 +356,6 @@ static void on_connect(uv_connect_t* req, int status) {
 	}
 }
 
-static void on_server_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
-	quilt_ctx* ctx = (quilt_ctx*)resolver->data;
-	uv_loop_t* loop = resolver->loop;
-	free(resolver);
-
-	if (status < 0) {
-		fprintf(stderr, "getaddrinfo callback error %s\n", uv_err_name(status));
-		context_close(ctx);
-		return;
-	}
-
-	char addr[17] = { '\0' };
-	uv_ip4_name((struct sockaddr_in*) res->ai_addr, addr, 16);
-	Q_DEBUG_MSG("%s", addr);
-
-	uv_connect_t *connect_req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
-	uv_tcp_t *socket = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
-	uv_tcp_init(loop, socket);
-	ctx->server_connection = socket;
-	socket->data = ctx;
-
-	uv_tcp_connect(connect_req, socket, (const struct sockaddr*) res->ai_addr, on_connect);
-
-	uv_freeaddrinfo(res);
-}
-
 static void on_new_connection(uv_stream_t *server, int status) {
 	if (status < 0) {
 		fprintf(stderr, "New connection error %s\n", uv_strerror(status));
@@ -395,28 +370,23 @@ static void on_new_connection(uv_stream_t *server, int status) {
 	uv_tcp_t *client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
 	uv_tcp_init(server->loop, client);
 	if (uv_accept(server, (uv_stream_t*)client) == 0) {
-		// Connect to server
+		// Init context
 		quilt_ctx* ctx = (quilt_ctx*)malloc(sizeof(quilt_ctx));
 		context_init(ctx);
 		ctx->config = config;
 		client->data = ctx;
 		ctx->client_connection = client;
 
-		uv_getaddrinfo_t* resolver = (uv_getaddrinfo_t*)malloc(sizeof(uv_getaddrinfo_t));
-		resolver->data = ctx;
+		// Connect to server
+		uv_connect_t *connect_req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
+		uv_tcp_t *socket = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
+		uv_tcp_init(server->loop, socket);
+		ctx->server_connection = socket;
+		socket->data = ctx;
 
-		struct addrinfo hints;
-		hints.ai_family = PF_INET;
-		hints.ai_socktype = SOCK_STREAM;
-		hints.ai_protocol = IPPROTO_TCP;
-		hints.ai_flags = 0;
-
-		char port_str[16];
-		snprintf(port_str, sizeof port_str, "%d", ctx->config->server_port);
-
-		if (uv_getaddrinfo(server->loop, resolver, on_server_resolved, ctx->config->server_host, port_str, &hints))
+		if (uv_ext_resolve_connect(connect_req, socket, ctx->config->server_host, ctx->config->server_port, on_connect))
 		{
-			free(resolver);
+			free(connect_req);
 			context_close(ctx);
 		}
 	}

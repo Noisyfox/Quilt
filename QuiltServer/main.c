@@ -54,8 +54,6 @@ static void context_free(client_ctx* ctx)
 	FREE(ctx->client);
 	buffer_free(&ctx->client_buffer);
 	buffer_free(&ctx->server_buffer);
-
-	free(ctx);
 }
 
 
@@ -72,6 +70,7 @@ static void on_close(uv_ext_close_t* req)
 	free(req);
 
 	context_free(ctx);
+	free(ctx);
 	Q_DEBUG_MSG("Connection closed!");
 }
 
@@ -592,48 +591,16 @@ static void on_mock_connect(uv_connect_t* req, int status) {
 
 	if (status)
 	{
-		fprintf(stderr, "Mock server connection error\n");
+		fprintf(stderr, "Mock server connection error %s\n", uv_strerror(status));
 		close_client(ctx);
 		return;
 	}
 
 	Q_DEBUG_MSG("Mock server connected!");
 
-	// Start bridging server & client
+	// Start bridging mock server & client
 	uv_read_start((uv_stream_t*)ctx->client, alloc_buffer, on_client_recv);
 	uv_read_start((uv_stream_t*)ctx->mock, alloc_buffer, on_mock_server_recv);
-}
-
-static void on_mock_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
-	client_ctx* ctx = (client_ctx*)resolver->data;
-	uv_loop_t* loop = resolver->loop;
-	free(resolver);
-
-	if(status < 0)
-	{
-		fprintf(stderr, "getaddrinfo callback error %s\n", uv_err_name(status));
-		close_client(ctx);
-		return;
-	}
-
-	char addr[17] = { '\0' };
-	uv_ip4_name((struct sockaddr_in*) res->ai_addr, addr, 16);
-	Q_DEBUG_MSG("%s", addr);
-
-	uv_connect_t *connect_req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
-	uv_tcp_t *socket = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
-	uv_tcp_init(loop, socket);
-	socket->data = ctx;
-	ctx->mock = socket;
-	connect_req->data = ctx;
-
-	if(uv_tcp_connect(connect_req, socket, (const struct sockaddr*) res->ai_addr, on_mock_connect))
-	{
-		free(connect_req);
-		close_client(ctx);
-	}
-
-	uv_freeaddrinfo(res);
 }
 
 static void on_new_connection(uv_stream_t *server, int status) {
@@ -650,29 +617,29 @@ static void on_new_connection(uv_stream_t *server, int status) {
 	uv_tcp_t *client = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
 	uv_tcp_init(server->loop, client);
 	if (uv_accept(server, (uv_stream_t*)client) == 0) {
-		// Connect to target
+		// Init context
 		client_ctx* ctx = (client_ctx*)malloc(sizeof(client_ctx));
 		context_init(ctx);
 		ctx->config = config;
 		ctx->client = client;
 		client->data = ctx;
-		uv_getaddrinfo_t* resolver = (uv_getaddrinfo_t*)malloc(sizeof(uv_getaddrinfo_t));
-		resolver->data = ctx;
 
-		struct addrinfo hints;
-		hints.ai_family = PF_INET;
-		hints.ai_socktype = SOCK_STREAM;
-		hints.ai_protocol = IPPROTO_TCP;
-		hints.ai_flags = 0;
+		// Connect to mock server
+		uv_connect_t *connect_req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
+		uv_tcp_t *socket = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
+		uv_tcp_init(server->loop, socket);
+		socket->data = ctx;
+		ctx->mock = socket;
+		connect_req->data = ctx;
 
 		const char* target = config->mocking_ip;
-		if(!target)
+		if (!target)
 		{
 			target = config->mocking_host;
 		}
-		if (uv_getaddrinfo(server->loop, resolver, on_mock_resolved, target, STR(443), &hints))
+		if(uv_ext_resolve_connect(connect_req, socket, target, 443, on_mock_connect))
 		{
-			free(resolver);
+			free(connect_req);
 			close_client(ctx);
 		}
 	}
