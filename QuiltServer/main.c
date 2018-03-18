@@ -552,6 +552,10 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 
 					goto bridge;
 				}
+				if(!ctx->is_comrade)
+				{
+					goto bridge;
+				}
 
 				// Close mock server connection. Ignore the callback here
 				// Since it will be freed anyway by close_client().
