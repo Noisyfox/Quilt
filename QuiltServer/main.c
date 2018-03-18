@@ -34,6 +34,7 @@ typedef struct
 
 	uv_tcp_t* client;
 	uv_tcp_t* mock;
+	uv_tcp_t* server;
 
 	buffer client_buffer;
 	buffer server_buffer;
@@ -50,6 +51,7 @@ static void context_init(client_ctx* ctx)
 
 static void context_free(client_ctx* ctx)
 {
+	FREE(ctx->server);
 	FREE(ctx->mock);
 	FREE(ctx->client);
 	buffer_free(&ctx->client_buffer);
@@ -78,7 +80,7 @@ static void close_client(client_ctx* ctx)
 {
 	uv_ext_close_t* close_req = (uv_ext_close_t*)malloc(sizeof(uv_ext_close_t));
 	close_req->data = ctx;
-	close_req->handles = (uv_handle_t**)malloc(sizeof(uv_handle_t*) * 2);
+	close_req->handles = (uv_handle_t**)malloc(sizeof(uv_handle_t*) * 3);
 	size_t i = 0;
 
 	if (ctx->mock)
@@ -88,6 +90,10 @@ static void close_client(client_ctx* ctx)
 	if (ctx->client)
 	{
 		close_req->handles[i++] = (uv_handle_t*)ctx->client;
+	}
+	if (ctx->server)
+	{
+		close_req->handles[i++] = (uv_handle_t*)ctx->server;
 	}
 	close_req->handle_count = i;
 
@@ -224,127 +230,6 @@ static int client_handle_next_record(client_ctx* ctx, tls_record* record)
 	return 0;
 }
 
-static int mock_handle_next_record(client_ctx* ctx, tls_record* record)
-{
-	if (FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH))
-	{
-		fprintf(stderr, "Handshaked already finished!\n");
-		return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
-	}
-
-	int rv;
-	if(!FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_HELLO))
-	{
-		if(!FLAG_TEST(ctx->tls_state, Q_TLS_CLIENT_HELLO))
-		{
-			// Client hello must happen first!
-			fprintf(stderr, "Server data received before Client Hello.\n");
-			return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
-		}
-
-		tls_handshake handshake;
-		if ((rv = tls_extract_handshake(record, 0, &handshake, NULL)))
-		{
-			fprintf(stderr, "tls_extract_handshake failed.\n");
-			return rv;
-		}
-
-		// Should be server hello record
-		if (handshake.msg_type != MBEDTLS_SSL_HS_SERVER_HELLO || handshake.msg_len < 38)
-		{
-			fprintf(stderr, "Server hello parse failed.\n");
-			return MBEDTLS_ERR_SSL_BAD_HS_CLIENT_HELLO;
-		}
-
-		FLAG_SET(ctx->tls_state, Q_TLS_SERVER_HELLO);
-	}
-	else
-	{
-		if (record->msg_type == MBEDTLS_SSL_MSG_HANDSHAKE)
-		{
-			if (!FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_CCS))
-			{
-				// Extract messages
-				tls_handshake handshake;
-				size_t offset = 0;
-				while (offset < record->msg_len)
-				{
-					if ((rv = tls_extract_handshake(record, 0, &handshake, &offset)))
-					{
-						fprintf(stderr, "tls_extract_handshake failed.\n");
-						return rv;
-					}
-
-					if (handshake.msg_type == MBEDTLS_SSL_HS_SERVER_HELLO_DONE)
-					{
-						if (handshake.msg_len != 0)
-						{
-							fprintf(stderr, "Malformed Server Hello Done.\n");
-							return MBEDTLS_ERR_SSL_BAD_HS_SERVER_HELLO_DONE;
-						}
-
-						if (FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_HELLO_DONE))
-						{
-							// Dup?
-							fprintf(stderr, "Duplicated Server Hello Done received.\n");
-							return MBEDTLS_ERR_SSL_BAD_HS_SERVER_HELLO_DONE;
-						}
-						FLAG_SET(ctx->tls_state, Q_TLS_SERVER_HELLO_DONE);
-					}
-				}
-
-				return 0; // Ignore all handshake record before we received CCS
-			}
-
-			if (FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_HANDSHAKE_FIN))
-			{
-				// Dup?
-				fprintf(stderr, "Duplicated handshake finish received.\n");
-				return MBEDTLS_ERR_SSL_BAD_HS_FINISHED;
-			}
-			if (!FLAG_TEST(ctx->tls_state, Q_TLS_CLIENT_HANDSHAKE_FIN))
-			{
-				fprintf(stderr, "Server handshake finish received before Client Handshake Finished.\n");
-				return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
-			}
-			FLAG_SET(ctx->tls_state, Q_TLS_SERVER_HANDSHAKE_FIN);
-
-			// Save ssl version
-			ctx->tls_major_ver = record->major_ver;
-			ctx->tls_minor_ver = record->minor_ver;
-
-			// All handshake should finished!
-			FLAG_SET(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH);
-			Q_DEBUG_MSG("Handshake finished!");
-		}
-		else if (record->msg_type == MBEDTLS_SSL_MSG_CHANGE_CIPHER_SPEC)
-		{
-			// Check current state
-			if (!FLAG_TEST(ctx->tls_state, Q_TLS_CLIENT_CCS))
-			{
-				fprintf(stderr, "Server CCS received before Client CCS.\n");
-				return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
-			}
-
-			if (FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_CCS))
-			{
-				// Dup?
-				fprintf(stderr, "Duplicated Change Cipher Spec received.\n");
-				return MBEDTLS_ERR_SSL_BAD_HS_CHANGE_CIPHER_SPEC;
-			}
-			// TODO: verify record
-			FLAG_SET(ctx->tls_state, Q_TLS_SERVER_CCS);
-		}
-		else if (record->msg_type == MBEDTLS_SSL_MSG_APPLICATION_DATA)
-		{
-			fprintf(stderr, "Shouldn't see Application Data during handshaking!\n");
-			return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
-		}
-	}
-
-	return 0;
-}
-
 static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 	client_ctx* ctx = (client_ctx*)stream->data;
 
@@ -454,11 +339,11 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 					}
 
 					Q_DEBUG_BUF("Client message", record.buf_msg, record.msg_len);
-//					if ((rs = uv_ext_write((uv_stream_t*)ctx->client_connection, record.buf_msg, record.msg_len, NULL, on_send)))
-//					{
-//						fprintf(stderr, "uv_ext_write failed.\n");
-//						break;
-//					}
+					if ((rs = uv_ext_write((uv_stream_t*)ctx->server, record.buf_msg, record.msg_len, NULL, on_send)))
+					{
+						fprintf(stderr, "uv_ext_write failed.\n");
+						break;
+					}
 
 					// Remove record from buffer
 					if ((rs = tls_pop_record(&ctx->client_buffer, &record)))
@@ -485,6 +370,181 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 			close_client(ctx);
 		}
 	}
+}
+
+static void on_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
+	client_ctx* ctx = (client_ctx*)stream->data;
+
+	if (nread < 0)
+	{
+		FREE(buf->base);
+		close_client(ctx);
+
+		return;
+	}
+	else
+	{
+		Q_DEBUG_BUF("Server response", (const unsigned char*)buf->base, nread);
+		if (buffer_append(&ctx->server_buffer, (const unsigned char*)buf->base, nread) != nread)
+		{
+			free(buf->base);
+			fprintf(stderr, "Server data enclose error! buffer_append failed.\n");
+			close_client(ctx);
+			return;
+		}
+		free(buf->base);
+
+		// TODO: Pause send timer
+		// Check if write buffer has enough content to send as a batch
+		if (uv_write_tls_application_data_all((uv_stream_t*)ctx->client, ctx->tls_major_ver, ctx->tls_minor_ver, &ctx->server_buffer, on_send))
+		{
+			fprintf(stderr, "Client data enclose error! uv_write_tls_application_data_full failed.\n");
+			close_client(ctx);
+			return;
+		}
+
+		// TODO: If has data remaining, start timer
+	}
+}
+
+static void on_server_connect(uv_connect_t* req, int status) {
+	client_ctx* ctx = (client_ctx*)req->data;
+
+	free(req);
+
+	if (status)
+	{
+		fprintf(stderr, "Target server connection error %s\n", uv_strerror(status));
+		close_client(ctx);
+		return;
+	}
+
+	Q_DEBUG_MSG("Target server connected!");
+
+	// Start bridging server & client
+	uv_read_start((uv_stream_t*)ctx->client, alloc_buffer, on_client_recv);
+	uv_read_start((uv_stream_t*)ctx->server, alloc_buffer, on_server_recv);
+}
+
+static int mock_handle_next_record(client_ctx* ctx, tls_record* record)
+{
+	if (FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH))
+	{
+		fprintf(stderr, "Handshaked already finished!\n");
+		return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
+	}
+
+	int rv;
+	if (!FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_HELLO))
+	{
+		if (!FLAG_TEST(ctx->tls_state, Q_TLS_CLIENT_HELLO))
+		{
+			// Client hello must happen first!
+			fprintf(stderr, "Server data received before Client Hello.\n");
+			return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
+		}
+
+		tls_handshake handshake;
+		if ((rv = tls_extract_handshake(record, 0, &handshake, NULL)))
+		{
+			fprintf(stderr, "tls_extract_handshake failed.\n");
+			return rv;
+		}
+
+		// Should be server hello record
+		if (handshake.msg_type != MBEDTLS_SSL_HS_SERVER_HELLO || handshake.msg_len < 38)
+		{
+			fprintf(stderr, "Server hello parse failed.\n");
+			return MBEDTLS_ERR_SSL_BAD_HS_CLIENT_HELLO;
+		}
+
+		FLAG_SET(ctx->tls_state, Q_TLS_SERVER_HELLO);
+	}
+	else
+	{
+		if (record->msg_type == MBEDTLS_SSL_MSG_HANDSHAKE)
+		{
+			if (!FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_CCS))
+			{
+				// Extract messages
+				tls_handshake handshake;
+				size_t offset = 0;
+				while (offset < record->msg_len)
+				{
+					if ((rv = tls_extract_handshake(record, 0, &handshake, &offset)))
+					{
+						fprintf(stderr, "tls_extract_handshake failed.\n");
+						return rv;
+					}
+
+					if (handshake.msg_type == MBEDTLS_SSL_HS_SERVER_HELLO_DONE)
+					{
+						if (handshake.msg_len != 0)
+						{
+							fprintf(stderr, "Malformed Server Hello Done.\n");
+							return MBEDTLS_ERR_SSL_BAD_HS_SERVER_HELLO_DONE;
+						}
+
+						if (FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_HELLO_DONE))
+						{
+							// Dup?
+							fprintf(stderr, "Duplicated Server Hello Done received.\n");
+							return MBEDTLS_ERR_SSL_BAD_HS_SERVER_HELLO_DONE;
+						}
+						FLAG_SET(ctx->tls_state, Q_TLS_SERVER_HELLO_DONE);
+					}
+				}
+
+				return 0; // Ignore all handshake record before we received CCS
+			}
+
+			if (FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_HANDSHAKE_FIN))
+			{
+				// Dup?
+				fprintf(stderr, "Duplicated handshake finish received.\n");
+				return MBEDTLS_ERR_SSL_BAD_HS_FINISHED;
+			}
+			if (!FLAG_TEST(ctx->tls_state, Q_TLS_CLIENT_HANDSHAKE_FIN))
+			{
+				fprintf(stderr, "Server handshake finish received before Client Handshake Finished.\n");
+				return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
+			}
+			FLAG_SET(ctx->tls_state, Q_TLS_SERVER_HANDSHAKE_FIN);
+
+			// Save ssl version
+			ctx->tls_major_ver = record->major_ver;
+			ctx->tls_minor_ver = record->minor_ver;
+
+			// All handshake should finished!
+			FLAG_SET(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH);
+			Q_DEBUG_MSG("Handshake finished!");
+		}
+		else if (record->msg_type == MBEDTLS_SSL_MSG_CHANGE_CIPHER_SPEC)
+		{
+			// Check current state
+			if (!FLAG_TEST(ctx->tls_state, Q_TLS_CLIENT_CCS))
+			{
+				fprintf(stderr, "Server CCS received before Client CCS.\n");
+				return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
+			}
+
+			if (FLAG_TEST(ctx->tls_state, Q_TLS_SERVER_CCS))
+			{
+				// Dup?
+				fprintf(stderr, "Duplicated Change Cipher Spec received.\n");
+				return MBEDTLS_ERR_SSL_BAD_HS_CHANGE_CIPHER_SPEC;
+			}
+			// TODO: verify record
+			FLAG_SET(ctx->tls_state, Q_TLS_SERVER_CCS);
+		}
+		else if (record->msg_type == MBEDTLS_SSL_MSG_APPLICATION_DATA)
+		{
+			fprintf(stderr, "Shouldn't see Application Data during handshaking!\n");
+			return MBEDTLS_ERR_SSL_UNEXPECTED_RECORD;
+		}
+	}
+
+	return 0;
 }
 
 static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -559,6 +619,26 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 				// Close mock server connection. Ignore the callback here
 				// Since it will be freed anyway by close_client().
 				uv_close((uv_handle_t*)ctx->mock, NULL);
+
+				// Stop reading from client socket, wait until we connect to our target server
+				if(uv_read_stop((uv_stream_t*)ctx->client))
+				{
+					goto err;
+				}
+				// Start connect to server
+				uv_connect_t *connect_req = (uv_connect_t*)malloc(sizeof(uv_connect_t));
+				uv_tcp_t *socket = (uv_tcp_t*)malloc(sizeof(uv_tcp_t));
+				uv_tcp_init(ctx->client->loop, socket);
+				socket->data = ctx;
+				ctx->server = socket;
+				connect_req->data = ctx;
+
+				if (uv_ext_resolve_connect(connect_req, socket, ctx->config->server_host, ctx->config->server_port, on_server_connect))
+				{
+					free(connect_req);
+					close_client(ctx);
+					goto err;
+				}
 			}
 		}
 		else
@@ -566,11 +646,8 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 			if(ctx->is_comrade)
 			{
 				// Should not reach here!
-				free(buf->base);
 				fprintf(stderr, "Received data from mock server after switch to proxy mode! Something went wrong!");
-				close_client(ctx);
-
-				return;
+				goto err;
 			}
 		}
 
@@ -581,6 +658,10 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 			fprintf(stderr, "Write error!");
 			close_client(ctx);
 		}
+		return;
+	err:
+		free(buf->base);
+		close_client(ctx);
 	}
 }
 
