@@ -20,7 +20,8 @@ This is a POC project. Currently build on Windows with Visual Studio 2017 & Linu
 
 ## Run
 1. Add `127.0.0.1 www.noisyfox.io` to your hosts file. Don't forget to remove this line once you've done otherwise you may miss tons of amazing things from my site and you and I will both be sad about that :worried:.
-2. Run `QuiltServer -p 1 -m www.noisyfox.io -i 172.104.122.122 -k "this is a key!" -l 8043 -v`.
-3. Run `Quilt -s 127.0.0.1 -m www.noisyfox.io -k "this is a key!" -p 8043 -l 8042 -v`, connect to `127.0.0.1:8042` with a Telnet client (putty for example) and see the output in `QuiltServer`.
-4. Use chrome or any other web browser to visit [https://www.noisyfox.io:8043](https://www.noisyfox.io:8043) and see the output in `QuiltServer`.
-5. I bet you could tell the difference.
+2. Run `socat - TCP-LISTEN:8044,crlf`
+3. Run `./QuiltServer -p 8044 -m www.noisyfox.io -i 172.104.122.122 -k "this is a key!" -l 8043 -v`.
+4. Run `./Quilt -s 127.0.0.1 -m www.noisyfox.io -k "this is a key!" -p 8043 -l 8042 -v`, connect to `127.0.0.1:8042` with a Telnet client (putty for example) and see the output in `QuiltServer` and your `socat`.
+5. Use chrome or any other web browser to visit [https://www.noisyfox.io:8043](https://www.noisyfox.io:8043) and see the output in `QuiltServer`.
+6. I bet you could tell the difference.
