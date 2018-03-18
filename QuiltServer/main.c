@@ -51,9 +51,9 @@ static void context_init(client_ctx* ctx)
 
 static void context_free(client_ctx* ctx)
 {
-	FREE(ctx->server);
-	FREE(ctx->mock);
-	FREE(ctx->client);
+	free(ctx->server);
+	free(ctx->mock);
+	free(ctx->client);
 	buffer_free(&ctx->client_buffer);
 	buffer_free(&ctx->server_buffer);
 }
@@ -235,7 +235,7 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 
 	if (nread < 0)
 	{
-		FREE(buf->base);
+		free(buf->base);
 		close_client(ctx);
 
 		return;
@@ -287,7 +287,7 @@ static void on_client_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 			if(FLAG_TEST(ctx->tls_state, Q_TLS_HANDSHAKE_FINISH))
 			{
 				fprintf(stderr, "Handshake shouldn't finish from client side!\n");
-				FREE(buf->base);
+				free(buf->base);
 				close_client(ctx);
 				return;
 			}
@@ -377,7 +377,7 @@ static void on_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 
 	if (nread < 0)
 	{
-		FREE(buf->base);
+		free(buf->base);
 		close_client(ctx);
 
 		return;
@@ -552,7 +552,7 @@ static void on_mock_server_recv(uv_stream_t *stream, ssize_t nread, const uv_buf
 
 	if (nread < 0)
 	{
-		FREE(buf->base);
+		free(buf->base);
 		close_client(ctx);
 
 		return;

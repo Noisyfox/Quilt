@@ -19,11 +19,6 @@ extern "C" {
 
 #define DEFAULT_BACKLOG 10
 
-#define FREE(p) \
-	do { \
-	    if(p)free(p); \
-    } while(0)
-
 
 #define Q_DEBUG_BUF( text, buf, len )           \
 	if(verbose) \

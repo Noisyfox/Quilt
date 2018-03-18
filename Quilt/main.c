@@ -47,8 +47,8 @@ static void context_init(quilt_ctx* ctx)
 
 static void context_free(quilt_ctx* ctx)
 {
-	FREE(ctx->client_connection);
-	FREE(ctx->server_connection);
+	free(ctx->client_connection);
+	free(ctx->server_connection);
 	buffer_free(&ctx->buf_read);
 	buffer_free(&ctx->buf_write);
 }
@@ -171,7 +171,7 @@ static void receive_server(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 	if (nread < 0) {
 		/* Error or EOF */
 		context_close(ctx);
-		FREE(buf->base);
+		free(buf->base);
 	}
 	else {
 		Q_DEBUG_BUF("Server response data", (unsigned char*)buf->base, nread);
@@ -245,7 +245,7 @@ static void receive_client(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 	//	fprintf(stderr, "receive_response!");
 	if (nread < 0) {
 		/* Error or EOF */
-		FREE(buf->base);
+		free(buf->base);
 		context_close(ctx);
 	}
 	else
