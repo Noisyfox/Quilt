@@ -110,7 +110,6 @@ if(android)
       ${BASE}/src/unix/linux-syscalls.c
       ${BASE}/src/unix/linux-syscalls.h
       ${BASE}/src/unix/procfs-exepath.c
-      ${BASE}/src/unix/pthread-barrier.c
       ${BASE}/src/unix/pthread-fixes.c
       ${BASE}/src/unix/sysinfo-loadavg.c
       ${BASE}/src/unix/sysinfo-memory.c)
@@ -140,8 +139,7 @@ if(ios OR mac)
   set(SOURCES ${SOURCES}
       ${BASE}/src/unix/darwin-proctitle.c
       ${BASE}/src/unix/darwin.c
-      ${BASE}/src/unix/fsevents.c
-      ${BASE}/src/unix/pthread-barrier.c)
+      ${BASE}/src/unix/fsevents.c)
 endif()
 
 if(linux)
@@ -180,7 +178,6 @@ if(os390)
   set(DEFINES ${DEFINES} _XOPEN_SOURCE_EXTENDED)
   set(SOURCES ${SOURCES}
       ${BASE}/src/unix/pthread-fixes.c
-      ${BASE}/src/unix/pthread-barrier.c
       ${BASE}/src/unix/os390.c
       ${BASE}/src/unix/os390-syscalls.c)
 endif()
