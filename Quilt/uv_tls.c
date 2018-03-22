@@ -269,7 +269,7 @@ static int assume_role(uv_tls_t* h) {
 	Q_DEBUG_MSG(" ok");
 
     mbedtls_ssl_conf_authmode(&tls->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
-    mbedtls_ssl_conf_ca_chain(&tls->conf, &tls->cacert, NULL);
+    mbedtls_ssl_conf_ca_chain(&tls->conf, tls->cacert, NULL);
     mbedtls_ssl_conf_rng(&tls->conf, uv_tls_random, h);
 //    mbedtls_ssl_conf_dbg( &tls->conf, my_debug, stdout );
 

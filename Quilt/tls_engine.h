@@ -87,7 +87,7 @@ struct tls_engine_s {
     mbedtls_ctr_drbg_context ctr_drbg;
     mbedtls_ssl_context ssl;
     mbedtls_ssl_config conf;
-    mbedtls_x509_crt cacert;
+    mbedtls_x509_crt* cacert;
 };
 
 typedef struct tls_engine_s tls_engine;
